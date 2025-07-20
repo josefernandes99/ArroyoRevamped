@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState } from "react";
+import React, { ChangeEvent, useMemo, useState } from "react";
 import { State } from "../model/state";
 import { assertUnreachable, copyListToClipboard, getUsersForDisplay } from "../utils/utils";
 import { SettingMenu } from "./SettingMenu";
@@ -29,6 +29,26 @@ export const Toolbar = ({
 }: ToolBarProps) => {
 
   const [setingMenu, setSettingMenu] = useState(false);
+
+  const whitelistSet = useMemo(() => {
+    if (state.status !== "scanning") {
+      return new Set<string>();
+    }
+    return new Set(state.whitelistedResults.map(user => user.id));
+  }, [state]);
+
+  const usersForDisplay = useMemo(() => {
+    if (state.status !== "scanning") {
+      return [] as const;
+    }
+    return getUsersForDisplay(
+      state.results,
+      whitelistSet,
+      state.currentTab,
+      state.searchTerm,
+      state.filter,
+    );
+  }, [state, whitelistSet]);
 
   return (
     <header className="app-header">
@@ -73,15 +93,7 @@ export const Toolbar = ({
           onClick={() => {
             switch (state.status) {
               case "scanning":
-                return copyListToClipboard(
-                  getUsersForDisplay(
-                    state.results,
-                    state.whitelistedResults,
-                    state.currentTab,
-                    state.searchTerm,
-                    state.filter,
-                  ),
-                );
+                return copyListToClipboard(usersForDisplay);
               case "initial":
               case "unfollowing":
                 return;
@@ -131,16 +143,7 @@ export const Toolbar = ({
               // if paused, allow to select all even if scan is not completed.
               state.percentage < 100 && !scanningPaused
             }
-            checked={
-              state.selectedResults.length ===
-              getUsersForDisplay(
-                state.results,
-                state.whitelistedResults,
-                state.currentTab,
-                state.searchTerm,
-                state.filter,
-              ).length
-            }
+            checked={state.selectedResults.length === usersForDisplay.length}
             className="toggle-all-checkbox"
             onClick={toggleCurrentePageUsers}
           />
@@ -155,16 +158,7 @@ export const Toolbar = ({
               // if paused, allow to select all even if scan is not completed.
               state.percentage < 100 && !scanningPaused
             }
-            checked={
-              state.selectedResults.length ===
-              getUsersForDisplay(
-                state.results,
-                state.whitelistedResults,
-                state.currentTab,
-                state.searchTerm,
-                state.filter,
-              ).length
-            }
+            checked={state.selectedResults.length === usersForDisplay.length}
             className="toggle-all-checkbox"
             onClick={toggleAllUsers}
           />

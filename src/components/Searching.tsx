@@ -1,12 +1,12 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { assertUnreachable, getCurrentPageUnfollowers, getMaxPage, getUsersForDisplay } from "../utils/utils";
-import { State } from "../model/state";
+import { ScanningState, State } from "../model/state";
 import { UserNode } from "../model/user";
 import { WHITELISTED_RESULTS_STORAGE_KEY } from "../constants/constants";
 
 
 export interface SearchingProps {
-  state: State;
+  state: ScanningState;
   setState: (state: State) => void;
   scanningPaused: boolean;
   pauseScan: () => void;
@@ -30,12 +30,26 @@ export const Searching = ({
     return null;
   }
 
-  const usersForDisplay = getUsersForDisplay(
-    state.results,
-    state.whitelistedResults,
-    state.currentTab,
-    state.searchTerm,
-    state.filter,
+  const whitelistSet = useMemo(() => {
+    return new Set(state.whitelistedResults.map(user => user.id));
+  }, [state]);
+
+  const usersForDisplay = useMemo(() => {
+    return getUsersForDisplay(
+      state.results,
+      whitelistSet,
+      state.currentTab,
+      state.searchTerm,
+      state.filter,
+    );
+  }, [state, whitelistSet]);
+  const sortedUsersForDisplay = useMemo(
+    () => [...usersForDisplay].sort((a, b) => a.username.localeCompare(b.username)),
+    [usersForDisplay],
+  );
+  const currentPageUsers = useMemo(
+    () => getCurrentPageUnfollowers(sortedUsersForDisplay, state.page),
+    [sortedUsersForDisplay, state.page],
   );
   let currentLetter = "";
 
@@ -206,7 +220,7 @@ export const Searching = ({
             Whitelisted
           </div>
         </nav>
-        {getCurrentPageUnfollowers(usersForDisplay, state.page).map(user => {
+        {currentPageUsers.map(user => {
           const firstLetter = user.username.substring(0, 1).toUpperCase();
           return (
             <>

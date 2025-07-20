@@ -4,7 +4,7 @@ import { ScanningFilter } from "./scanning-filter";
 import { UnfollowLogEntry } from "./unfollow-log-entry";
 import { UnfollowFilter } from "./unfollow-filter";
 
-type ScanningState = {
+export type ScanningState = {
   readonly status: 'scanning';
   readonly page: number;
   readonly currentTab: ScanningTab;
@@ -16,7 +16,7 @@ type ScanningState = {
   readonly filter: ScanningFilter;
 };
 
-type UnfollowingState = {
+export type UnfollowingState = {
   readonly status: 'unfollowing';
   readonly searchTerm: string;
   readonly percentage: number;

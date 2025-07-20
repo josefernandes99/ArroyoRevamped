@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useEffect, useState } from "react";
+import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { render } from "react-dom";
 import "./styles.scss";
 
@@ -49,6 +49,41 @@ function App() {
       timeToWaitAfterFiveUnfollows: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS,
     }
   );
+
+  const whitelistSet = useMemo(() => {
+    if (state.status !== "scanning") {
+      return new Set<string>();
+    }
+    return new Set(state.whitelistedResults.map(user => user.id));
+  }, [state]);
+
+  const usersForDisplay = useMemo(() => {
+    if (state.status !== "scanning") {
+      return [] as readonly UserNode[];
+    }
+    return getUsersForDisplay(
+      state.results,
+      whitelistSet,
+      state.currentTab,
+      state.searchTerm,
+      state.filter,
+    );
+  }, [state, whitelistSet]);
+
+  const sortedUsersForDisplay = useMemo(() => {
+    if (state.status !== "scanning") {
+      return [] as readonly UserNode[];
+    }
+    return [...usersForDisplay].sort((a, b) => a.username.localeCompare(b.username));
+  }, [state.status, usersForDisplay]);
+
+  const currentPage = state.status === "scanning" ? state.page : 1;
+  const currentPageUsers = useMemo(() => {
+    if (state.status !== "scanning") {
+      return [] as readonly UserNode[];
+    }
+    return getCurrentPageUnfollowers(sortedUsersForDisplay, currentPage);
+  }, [state.status, sortedUsersForDisplay, currentPage]);
 
 
   let isActiveProcess: boolean;
@@ -152,13 +187,7 @@ function App() {
     if (e.currentTarget.checked) {
       setState({
         ...state,
-        selectedResults: getUsersForDisplay(
-          state.results,
-          state.whitelistedResults,
-          state.currentTab,
-          state.searchTerm,
-          state.filter,
-        ),
+        selectedResults: usersForDisplay,
       });
     } else {
       setState({
@@ -176,16 +205,7 @@ function App() {
     if (e.currentTarget.checked) {
       setState({
         ...state,
-        selectedResults: getCurrentPageUnfollowers(
-          getUsersForDisplay(
-            state.results,
-            state.whitelistedResults,
-            state.currentTab,
-            state.searchTerm,
-            state.filter,
-          ),
-          state.page,
-        ),
+        selectedResults: currentPageUsers,
       });
     } else {
       setState({
