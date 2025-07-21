@@ -55,23 +55,19 @@ export const Searching = ({
 
   const openProfileTabs = () => {
     if (currentPageUsers.length === 0) {
+      console.log("openProfileTabs: no users on this page to open");
       return;
     }
-    const urls = currentPageUsers.map(
-      u => `https://www.instagram.com/${u.username}/`,
+
+    // Log each one
+    currentPageUsers.forEach((u, idx) =>
+        console.log(`openProfileTabs: [${idx + 1}/${currentPageUsers.length}] opening ${u.username}`)
     );
-    const reviewWindow = window.open(
-      urls[0],
-      "_blank",
-      "noopener=yes,width=800,height=600",
-    );
-    if (!reviewWindow) {
-      return;
-    }
-    urls.slice(1).forEach(url => {
-      reviewWindow.open(url, "_blank");
+
+    // Open each as its own tab (no feature string!)
+    currentPageUsers.forEach(u => {
+      window.open(`https://www.instagram.com/${u.username}/`, "_blank");
     });
-    reviewWindow.focus();
   };
 
   const onNewLetter = (firstLetter: string) => {
