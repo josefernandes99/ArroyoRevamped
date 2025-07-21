@@ -53,6 +53,27 @@ export const Searching = ({
   );
   let currentLetter = "";
 
+  const openProfileTabs = () => {
+    if (currentPageUsers.length === 0) {
+      return;
+    }
+    const urls = currentPageUsers.map(
+      u => `https://www.instagram.com/${u.username}/`,
+    );
+    const reviewWindow = window.open(
+      urls[0],
+      "_blank",
+      "noopener=yes,width=800,height=600",
+    );
+    if (!reviewWindow) {
+      return;
+    }
+    urls.slice(1).forEach(url => {
+      reviewWindow.open(url, "_blank");
+    });
+    reviewWindow.focus();
+  };
+
   const onNewLetter = (firstLetter: string) => {
     currentLetter = firstLetter;
     return <div className="alphabet-character">{currentLetter}</div>;
@@ -154,6 +175,12 @@ export const Searching = ({
             ❯
           </a>
         </div>
+        <button
+          className="open-profiles"
+          onClick={openProfileTabs}
+        >
+          Open Profiles
+        </button>
         <button
           className="unfollow"
           onClick={() => {

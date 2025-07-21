@@ -18,7 +18,7 @@ html {
         @include helpers.main-layout;
         display: flex;
         flex-direction: column;
-        
+
         .overlay {
             color: variables.$clr-white;
         }
@@ -144,6 +144,14 @@ html {
             &.unfollow {
                 margin-bottom: variables.$size-large;
                 background-color: variables.$clr-red !important;
+                @extend .badge;
+                @extend .fs-large;
+                @extend .clr-inherit;
+            }
+
+            &.open-profiles {
+                margin-bottom: variables.$size-large;
+                background-color: variables.$clr-cyan !important;
                 @extend .badge;
                 @extend .fs-large;
                 @extend .clr-inherit;
