@@ -61,12 +61,10 @@ export const Searching = ({
 
     console.log(`openProfileTabs: starting fetch for ${currentPageUsers.length} users`);
 
-    // Log each one
     currentPageUsers.forEach((u, idx) =>
-        console.log(`openProfileTabs: [${idx + 1}/${currentPageUsers.length}] opening ${u.username}`)
+      console.log(`openProfileTabs: [${idx + 1}/${currentPageUsers.length}] opening ${u.username}`),
     );
 
-    // Open each as its own tab (no feature string!)
     currentPageUsers.forEach(u => {
       window.open(`https://www.instagram.com/${u.username}/`, "_blank");
     });
@@ -110,6 +108,7 @@ export const Searching = ({
       }
     }
   };
+
 
   const onNewLetter = (firstLetter: string) => {
     currentLetter = firstLetter;

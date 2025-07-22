@@ -9,7 +9,12 @@ import { UserUncheckIcon } from "./components/icons/UserUncheckIcon";
 import { DEFAULT_TIME_BETWEEN_SEARCH_CYCLES,
   DEFAULT_TIME_BETWEEN_UNFOLLOWS,
   DEFAULT_TIME_TO_WAIT_AFTER_FIVE_SEARCH_CYCLES,
-  DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS, INSTAGRAM_HOSTNAME, WHITELISTED_RESULTS_STORAGE_KEY } from "./constants/constants";
+  DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS,
+  DEFAULT_TIME_BETWEEN_PROFILE_FETCHES,
+  DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES,
+  INSTAGRAM_HOSTNAME,
+  WHITELISTED_RESULTS_STORAGE_KEY
+} from "./constants/constants";
 import {
   assertUnreachable,
   getCookie,
@@ -25,6 +30,7 @@ import { Timings } from "./model/timings";
 
 // pause
 let scanningPaused = false;
+let followerFetchStarted = false;
 
 function pauseScan() {
   scanningPaused = !scanningPaused;
@@ -45,6 +51,8 @@ function App() {
     {
       timeBetweenSearchCycles: DEFAULT_TIME_BETWEEN_SEARCH_CYCLES,
       timeToWaitAfterFiveSearchCycles: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_SEARCH_CYCLES,
+      timeBetweenProfileFetches: DEFAULT_TIME_BETWEEN_PROFILE_FETCHES,
+      timeToWaitAfterFiveProfileFetches: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES,
       timeBetweenUnfollows: DEFAULT_TIME_BETWEEN_UNFOLLOWS,
       timeToWaitAfterFiveUnfollows: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS,
     }
@@ -304,6 +312,78 @@ function App() {
     // Dependency array not entirely legit, but works this way. TODO: Find a way to fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status]);
+
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      console.log("fetchProfiles: triggered", { status: state.status });
+      if (state.status !== "scanning" || state.percentage < 100) {
+        console.log("fetchProfiles: conditions not met");
+        return;
+      }
+
+      followerFetchStarted = true;
+      const users = [...state.results];
+      console.log(`fetchProfiles: ${users.length} profiles to process`);
+      let cycle = 0;
+      for (let idx = 0; idx < users.length; idx++) {
+        const u = users[idx];
+        console.log(`fetchProfiles: fetching ${u.username} (${idx + 1}/${users.length})`);
+        try {
+          const res = await fetch(
+            `https://www.instagram.com/api/v1/users/web_profile_info/?username=${u.username}`,
+            { headers: { "X-IG-App-ID": "936619743392459" } },
+          );
+          console.log("fetchProfiles: status", res.status);
+          if (!res.ok) {
+            console.error(`Failed to fetch profile data for ${u.username}`);
+            continue;
+          }
+          const json = await res.json();
+          const followers = json.data.user.edge_followed_by.count;
+          const following = json.data.user.edge_follow.count;
+
+          const update = (list: readonly UserNode[]) =>
+            list.map(user =>
+              user.id === u.id ? { ...user, follower_count: followers, following_count: following } : user,
+            );
+          setState(prev => {
+            if (prev.status !== "scanning") return prev;
+            return {
+              ...prev,
+              results: update(prev.results),
+              whitelistedResults: update(prev.whitelistedResults),
+              selectedResults: update(prev.selectedResults),
+            };
+          });
+        } catch (e) {
+          console.error(`Failed fetching profile info for ${u.username}`, e);
+        }
+
+        await sleep(
+          Math.floor(
+            Math.random() * (timings.timeBetweenProfileFetches - timings.timeBetweenProfileFetches * 0.7),
+          ) + timings.timeBetweenProfileFetches,
+        );
+        cycle++;
+        if (cycle >= 5) {
+          console.log(`fetchProfiles: cooldown for ${timings.timeToWaitAfterFiveProfileFetches}ms`);
+          cycle = 0;
+          setToast({
+            show: true,
+            text: `Sleeping ${timings.timeToWaitAfterFiveProfileFetches / 1000} seconds to prevent getting temp blocked`,
+          });
+          await sleep(timings.timeToWaitAfterFiveProfileFetches);
+          setToast({ show: false });
+        }
+      }
+      setToast({ show: true, text: "Profile fetching completed!" });
+      console.log("fetchProfiles: completed");
+    };
+
+    if (!followerFetchStarted && state.status === "scanning" && state.percentage === 100) {
+      fetchProfiles();
+    }
+  }, [state, timings]);
 
   useEffect(() => {
     const unfollow = async () => {
