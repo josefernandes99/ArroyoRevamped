@@ -19,7 +19,11 @@ import {
   assertUnreachable,
   getCookie,
   getCurrentPageUnfollowers,
-  getUsersForDisplay, sleep, unfollowUserUrlGenerator, urlGenerator,
+  getUsersForDisplay,
+  sortUsers,
+  sleep,
+  unfollowUserUrlGenerator,
+  urlGenerator,
 } from "./utils/utils";
 import { NotSearching } from "./components/NotSearching";
 import { State } from "./model/state";
@@ -78,12 +82,16 @@ function App() {
     );
   }, [state, whitelistSet]);
 
+  const selectedIds = useMemo(() => {
+    if (state.status !== "scanning") return new Set<string>();
+    return new Set(state.selectedResults.map(u => u.id));
+  }, [state]);
   const sortedUsersForDisplay = useMemo(() => {
     if (state.status !== "scanning") {
       return [] as readonly UserNode[];
     }
-    return [...usersForDisplay].sort((a, b) => a.username.localeCompare(b.username));
-  }, [state.status, usersForDisplay]);
+    return sortUsers(usersForDisplay, state.sortColumns, selectedIds);
+  }, [state.status, usersForDisplay, state.status === "scanning" ? state.sortColumns : [], selectedIds]);
 
   const currentPage = state.status === "scanning" ? state.page : 1;
   const currentPageUsers = useMemo(() => {
@@ -118,6 +126,7 @@ function App() {
       status: "scanning",
       page: 1,
       searchTerm: "",
+      sortColumns: [],
       currentTab: "non_whitelisted",
       percentage: 0,
       results: [],

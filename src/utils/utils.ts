@@ -4,6 +4,7 @@ import { ScanningTab } from "../model/scanning-tab";
 import { ScanningFilter } from "../model/scanning-filter";
 import { UnfollowLogEntry } from "../model/unfollow-log-entry";
 import { UnfollowFilter } from "../model/unfollow-filter";
+import { SortColumn } from "../model/state";
 
 export async function copyListToClipboard(nonFollowersList: readonly UserNode[]): Promise<void> {
   const sortedList = [...nonFollowersList].sort((a, b) => (a.username > b.username ? 1 : -1));
@@ -95,6 +96,53 @@ export function getUnfollowLogForDisplay(log: readonly UnfollowLogEntry[], searc
     entries.push(entry);
   }
   return entries;
+}
+
+
+export function sortUsers(
+  users: readonly UserNode[],
+  sort: readonly SortColumn[],
+  selectedIds: ReadonlySet<string>,
+): readonly UserNode[] {
+  const list = [...users];
+  list.sort((a, b) => {
+    for (const s of sort) {
+      let av: any;
+      let bv: any;
+      switch (s.key) {
+        case 'username':
+          av = a.username.toLowerCase();
+          bv = b.username.toLowerCase();
+          break;
+        case 'followers':
+          av = a.follower_count ?? 0;
+          bv = b.follower_count ?? 0;
+          break;
+        case 'following':
+          av = a.following_count ?? 0;
+          bv = b.following_count ?? 0;
+          break;
+        case 'ratio':
+          av = a.follower_count && a.following_count ? a.following_count / a.follower_count : 0;
+          bv = b.follower_count && b.following_count ? b.following_count / b.follower_count : 0;
+          break;
+        case 'status':
+          av = a.is_private ? 1 : 0;
+          bv = b.is_private ? 1 : 0;
+          break;
+        case 'selected':
+          av = selectedIds.has(a.id) ? 1 : 0;
+          bv = selectedIds.has(b.id) ? 1 : 0;
+          break;
+        default:
+          assertUnreachable(s.key as never);
+      }
+      if (av < bv) return s.direction === 'asc' ? -1 : 1;
+      if (av > bv) return s.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+  return list;
 }
 
 /**

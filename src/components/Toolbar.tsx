@@ -1,10 +1,9 @@
 import React, { ChangeEvent, useMemo, useState } from "react";
 import { State } from "../model/state";
-import { assertUnreachable, copyListToClipboard, getUsersForDisplay } from "../utils/utils";
+import { assertUnreachable, getUsersForDisplay } from "../utils/utils";
 import { SettingMenu } from "./SettingMenu";
 import { SettingIcon } from "./icons/SettingIcon";
 import { Timings } from "../model/timings";
-import { Logo } from "./icons/Logo";
 
 interface ToolBarProps {
   isActiveProcess: boolean;
@@ -60,54 +59,7 @@ export const Toolbar = ({
         />
       )}
       <div className="app-header-content">
-        <div
-          className="logo"
-          onClick={() => {
-            if (isActiveProcess) {
-              // Avoid resetting state while active process.
-              return;
-            }
-            switch (state.status) {
-              case "initial":
-                if (confirm("Go back to Instagram?")) {
-                  location.reload();
-                }
-                break;
-
-              case "scanning":
-              case "unfollowing":
-                setState({
-                  status: "initial",
-                });
-            }
-          }}
-        >
-          <Logo />
-          <div className="logo-text">
-            <span>Instagram</span>
-            <span>Unfollowers</span>
-          </div>
-        </div>
-        <button
-          className="copy-list"
-          onClick={() => {
-            switch (state.status) {
-              case "scanning":
-                return copyListToClipboard(usersForDisplay);
-              case "initial":
-              case "unfollowing":
-                return;
-              default:
-                assertUnreachable(state);
-            }
-          }}
-          disabled={state.status === "initial"}
-        >
-          Copy List
-        </button>
-        {
-          state.status === "initial" && <SettingIcon onClickLogo={() => { setSettingMenu(true); }} />
-        }
+        <SettingIcon onClickLogo={() => { setSettingMenu(true); }} />
         <input
           type="text"
           className="search-bar"
@@ -137,12 +89,7 @@ export const Toolbar = ({
           <input
             title="Select all on this page"
             type="checkbox"
-            // Avoid allowing to select all before scan completed to avoid confusion
-            // regarding what exactly is selected while scanning in progress.
-            disabled={
-              // if paused, allow to select all even if scan is not completed.
-              state.percentage < 100 && !scanningPaused
-            }
+            disabled={state.percentage < 100 && !scanningPaused}
             checked={state.selectedResults.length === usersForDisplay.length}
             className="toggle-all-checkbox"
             onClick={toggleCurrentePageUsers}
@@ -152,12 +99,7 @@ export const Toolbar = ({
           <input
             title="Select all"
             type="checkbox"
-            // Avoid allowing to select all before scan completed to avoid confusion
-            // regarding what exactly is selected while scanning in progress.
-            disabled={
-              // if paused, allow to select all even if scan is not completed.
-              state.percentage < 100 && !scanningPaused
-            }
+            disabled={state.percentage < 100 && !scanningPaused}
             checked={state.selectedResults.length === usersForDisplay.length}
             className="toggle-all-checkbox"
             onClick={toggleAllUsers}

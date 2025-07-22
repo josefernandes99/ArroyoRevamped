@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
-import { assertUnreachable, getCurrentPageUnfollowers, getMaxPage, getUsersForDisplay } from "../utils/utils";
-import { ScanningState, State } from "../model/state";
+import { assertUnreachable, getCurrentPageUnfollowers, getMaxPage, getUsersForDisplay, sortUsers } from "../utils/utils";
+import { ScanningState, State, SortKey } from "../model/state";
 import { UserNode } from "../model/user";
 import { WHITELISTED_RESULTS_STORAGE_KEY } from "../constants/constants";
 
@@ -43,15 +43,43 @@ export const Searching = ({
       state.filter,
     );
   }, [state, whitelistSet]);
+  const selectedIds = useMemo(() => new Set(state.selectedResults.map(u => u.id)), [state.selectedResults]);
   const sortedUsersForDisplay = useMemo(
-    () => [...usersForDisplay].sort((a, b) => a.username.localeCompare(b.username)),
-    [usersForDisplay],
+    () => sortUsers(usersForDisplay, state.sortColumns, selectedIds),
+    [usersForDisplay, state.sortColumns, selectedIds],
   );
   const currentPageUsers = useMemo(
     () => getCurrentPageUnfollowers(sortedUsersForDisplay, state.page),
     [sortedUsersForDisplay, state.page],
   );
-  let currentLetter = "";
+
+  const handleSort = (key: SortKey) => {
+    const idx = state.sortColumns.findIndex(c => c.key === key);
+    let newSort = [...state.sortColumns];
+    if (idx !== -1) {
+      const dir = newSort[idx].direction === 'asc' ? 'desc' : 'asc';
+      newSort[idx] = { key, direction: dir };
+    } else if (state.sortColumns.length >= 2) {
+      newSort = [];
+    } else {
+      newSort.push({ key, direction: 'asc' });
+    }
+    setState({ ...state, sortColumns: newSort });
+  };
+
+  const renderHeader = (key: SortKey, label: string) => {
+    const idx = state.sortColumns.findIndex(c => c.key === key);
+    if (idx === -1) {
+      return label;
+    }
+    const arrow = state.sortColumns[idx].direction === 'asc' ? '↑' : '↓';
+    const order = idx + 1;
+    return (
+      <>
+        {label} {arrow} {order}
+      </>
+    );
+  };
 
   const openProfileTabs = async () => {
     if (currentPageUsers.length === 0) {
@@ -110,16 +138,11 @@ export const Searching = ({
   };
 
 
-  const onNewLetter = (firstLetter: string) => {
-    currentLetter = firstLetter;
-    return <div className="alphabet-character">{currentLetter}</div>;
-  };
 
   return (
     <section className="flex">
       <aside className="app-sidebar">
         <menu className="flex column m-clear p-clear">
-          <p>Filter</p>
           <label className="badge m-small">
             <input
               type="checkbox"
@@ -170,15 +193,6 @@ export const Searching = ({
           <p>Displayed: {usersForDisplay.length}</p>
           <p>Total: {state.results.length}</p>
         </div>
-        {/* Scan controls */}
-        <div className="controls">
-          <button
-            className="button-control button-pause"
-            onClick={pauseScan}
-          >
-            {scanningPaused ? "Resume" : "Pause"}
-          </button>
-        </div>
         <div className="grow t-center">
           <p>Pages</p>
           <a
@@ -210,6 +224,14 @@ export const Searching = ({
           >
             ❯
           </a>
+        </div>
+        <div className="controls">
+          <button
+            className="button-control button-pause"
+            onClick={pauseScan}
+          >
+            {scanningPaused ? "Resume" : "Pause"}
+          </button>
         </div>
         <button
           className="open-profiles"
@@ -247,7 +269,7 @@ export const Searching = ({
             });
           }}
         >
-          UNFOLLOW ({state.selectedResults.length})
+          Unfollow ({state.selectedResults.length})
         </button>
       </aside>
       <article className="results-container">
@@ -283,84 +305,99 @@ export const Searching = ({
             Whitelisted
           </div>
         </nav>
-        {currentPageUsers.map(user => {
-          const firstLetter = user.username.substring(0, 1).toUpperCase();
-          return (
-            <>
-              {firstLetter !== currentLetter && onNewLetter(firstLetter)}
-              <label className="result-item">
-                <div className="flex grow align-center">
-                  <div
-                    className="avatar-container"
-                    onClick={e => {
-                      // Prevent selecting result when trying to add to whitelist.
-                      e.preventDefault();
-                      e.stopPropagation();
-                      let whitelistedResults: readonly UserNode[] = [];
-                      switch (state.currentTab) {
-                        case "non_whitelisted":
-                          whitelistedResults = [...state.whitelistedResults, user];
-                          break;
+        <table className="results-table">
+          <thead>
+            <tr>
+              <th>Profile</th>
+              <th onClick={() => handleSort('username')}>{renderHeader('username', 'User')}</th>
+              <th onClick={() => handleSort('followers')}>{renderHeader('followers', 'Followers')}</th>
+              <th onClick={() => handleSort('following')}>{renderHeader('following', 'Following')}</th>
+              <th onClick={() => handleSort('ratio')}>{renderHeader('ratio', 'Ratio')}</th>
+              <th onClick={() => handleSort('status')}>{renderHeader('status', 'Status')}</th>
+              <th onClick={() => handleSort('selected')}>{renderHeader('selected', 'Select')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {currentPageUsers.map(user => {
+              const ratio =
+                user.follower_count && user.following_count
+                  ? (user.following_count / user.follower_count) * 100
+                  : 0;
+              const ratioClass = ratio >= 100 ? "ratio-green" : "ratio-red";
+              return (
+                <tr key={user.id} className="result-row">
+                  <td>
+                    <div
+                      className="avatar-container"
+                      onClick={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        let whitelistedResults: readonly UserNode[] = [];
+                        switch (state.currentTab) {
+                          case "non_whitelisted":
+                            whitelistedResults = [...state.whitelistedResults, user];
+                            break;
 
-                        case "whitelisted":
-                          whitelistedResults = state.whitelistedResults.filter(
-                            result => result.id !== user.id,
-                          );
-                          break;
+                          case "whitelisted":
+                            whitelistedResults = state.whitelistedResults.filter(
+                              result => result.id !== user.id,
+                            );
+                            break;
 
-                        default:
-                          assertUnreachable(state.currentTab);
-                      }
-                      localStorage.setItem(
-                        WHITELISTED_RESULTS_STORAGE_KEY,
-                        JSON.stringify(whitelistedResults),
-                      );
-                      setState({ ...state, whitelistedResults });
-                    }}
-                  >
-                    <img
-                      className="avatar"
-                      alt={user.username}
-                      src={user.profile_pic_url}
-                    />
-                    <span className="avatar-icon-overlay-container">
-                      {state.currentTab === "non_whitelisted" ? (
-                        <UserCheckIcon />
-                      ) : (
-                        <UserUncheckIcon />
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex column m-medium">
-                    <a
-                      className="fs-xlarge"
-                      target="_blank"
-                      href={`/${user.username}`}
-                      rel="noreferrer"
+                          default:
+                            assertUnreachable(state.currentTab);
+                        }
+                        localStorage.setItem(
+                          WHITELISTED_RESULTS_STORAGE_KEY,
+                          JSON.stringify(whitelistedResults),
+                        );
+                        setState({ ...state, whitelistedResults });
+                      }}
                     >
-                      {user.username}
-                    </a>
-                    <span className="fs-medium">{user.full_name}</span>
-                    <span className="fs-medium">Followers: {user.follower_count ?? '-'}</span>
-                    <span className="fs-medium">Following: {user.following_count ?? '-'}</span>
-                  </div>
-                  {user.is_verified && <div className="verified-badge">✔</div>}
-                  {user.is_private && (
-                    <div className="flex justify-center w-100">
-                      <span className="private-indicator">Private</span>
+                      <img
+                        className="avatar"
+                        alt={user.username}
+                        src={user.profile_pic_url}
+                      />
+                      <span className="avatar-icon-overlay-container">
+                        {state.currentTab === "non_whitelisted" ? (
+                          <UserCheckIcon />
+                        ) : (
+                          <UserUncheckIcon />
+                        )}
+                      </span>
                     </div>
-                  )}
-                </div>
-                <input
-                  className="account-checkbox"
-                  type="checkbox"
-                  checked={state.selectedResults.indexOf(user) !== -1}
-                  onChange={e => toggleUser(e.currentTarget.checked, user)}
-                />
-              </label>
-            </>
-          );
-        })}
+                  </td>
+                  <td>
+                    <div className="flex column">
+                      <a
+                        className="fs-xlarge"
+                        target="_blank"
+                        href={`/${user.username}`}
+                        rel="noreferrer"
+                      >
+                        {user.username}
+                      </a>
+                      <span className="fs-medium">{user.full_name}</span>
+                    </div>
+                  </td>
+                  <td className="fs-medium">{user.follower_count ?? '-'}</td>
+                  <td className="fs-medium">{user.following_count ?? '-'}</td>
+                  <td className={`fs-medium ${ratioClass}`}>{ratio.toFixed(0)}%</td>
+                  <td className="fs-medium">{user.is_private ? 'Private' : 'Public'}</td>
+                  <td>
+                    <input
+                      className="account-checkbox"
+                      type="checkbox"
+                      checked={state.selectedResults.indexOf(user) !== -1}
+                      onChange={e => toggleUser(e.currentTarget.checked, user)}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </article>
     </section>
   );

@@ -4,6 +4,21 @@ import { ScanningFilter } from "./scanning-filter";
 import { UnfollowLogEntry } from "./unfollow-log-entry";
 import { UnfollowFilter } from "./unfollow-filter";
 
+export type SortKey =
+  | 'username'
+  | 'followers'
+  | 'following'
+  | 'ratio'
+  | 'status'
+  | 'selected';
+
+export type SortDirection = 'asc' | 'desc';
+
+export type SortColumn = {
+  readonly key: SortKey;
+  readonly direction: SortDirection;
+};
+
 export type ScanningState = {
   readonly status: 'scanning';
   readonly page: number;
@@ -14,6 +29,7 @@ export type ScanningState = {
   readonly whitelistedResults: readonly UserNode[];
   readonly selectedResults: readonly UserNode[];
   readonly filter: ScanningFilter;
+  readonly sortColumns: readonly SortColumn[];
 };
 
 export type UnfollowingState = {
