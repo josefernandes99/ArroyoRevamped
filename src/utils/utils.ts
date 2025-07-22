@@ -184,3 +184,4 @@ export function urlGenerator(nextCode?: string): string {
 export function unfollowUserUrlGenerator(idToUnfollow: string): string {
   return `https://www.instagram.com/web/friendships/${idToUnfollow}/unfollow/`;
 }
+

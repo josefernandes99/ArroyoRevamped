@@ -1,8 +1,16 @@
 import React, { useMemo } from "react";
-import { assertUnreachable, getCurrentPageUnfollowers, getMaxPage, getUsersForDisplay, sortUsers } from "../utils/utils";
+import {
+  assertUnreachable,
+  getCurrentPageUnfollowers,
+  getMaxPage,
+  getUsersForDisplay,
+  sortUsers,
+  sleep,
+} from "../utils/utils";
+import { scrapeFollowerCounts } from "../utils/instagram";
 import { ScanningState, State, SortKey } from "../model/state";
 import { UserNode } from "../model/user";
-import { WHITELISTED_RESULTS_STORAGE_KEY } from "../constants/constants";
+import { WHITELISTED_RESULTS_STORAGE_KEY, DEFAULT_TIME_BETWEEN_PROFILE_FETCHES, DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES } from "../constants/constants";
 
 
 export interface SearchingProps {
@@ -89,31 +97,16 @@ export const Searching = ({
 
     console.log(`openProfileTabs: starting fetch for ${currentPageUsers.length} users`);
 
-    currentPageUsers.forEach((u, idx) =>
-      console.log(`openProfileTabs: [${idx + 1}/${currentPageUsers.length}] opening ${u.username}`),
-    );
-
-    currentPageUsers.forEach(u => {
-      window.open(`https://www.instagram.com/${u.username}/`, "_blank");
-    });
-
+    let cycle = 0;
     for (const u of currentPageUsers) {
-      console.log(`openProfileTabs: fetching follower counts for ${u.username}`);
+      console.log(`openProfileTabs: scraping follower counts for ${u.username}`);
       try {
-        const url =
-          `https://www.instagram.com/api/v1/users/web_profile_info/?username=${u.username}`;
-        const res = await fetch(url, {
-          headers: { "X-IG-App-ID": "936619743392459" },
-        });
-        console.log(`openProfileTabs: fetch status for ${u.username}:`, res.status);
-        if (!res.ok) {
-          console.error(`openProfileTabs: request for ${u.username} failed`);
+        const scraped = await scrapeFollowerCounts(u.username);
+        if (!scraped) {
+          console.error(`openProfileTabs: failed to scrape data for ${u.username}`);
           continue;
         }
-        const json = await res.json();
-        console.log(`openProfileTabs: received data for ${u.username}`, json);
-        const followers = json.data.user.edge_followed_by.count;
-        const following = json.data.user.edge_follow.count;
+        const { followers, following } = scraped;
         const updateUser = (list: readonly UserNode[]) =>
           list.map(user =>
             user.id === u.id
@@ -133,6 +126,17 @@ export const Searching = ({
         });
       } catch (e) {
         console.error(`openProfileTabs: failed to fetch data for ${u.username}`, e);
+      }
+
+      await sleep(
+        Math.floor(
+          Math.random() * (DEFAULT_TIME_BETWEEN_PROFILE_FETCHES - DEFAULT_TIME_BETWEEN_PROFILE_FETCHES * 0.7),
+        ) + DEFAULT_TIME_BETWEEN_PROFILE_FETCHES,
+      );
+      cycle++;
+      if (cycle >= 5) {
+        await sleep(DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES);
+        cycle = 0;
       }
     }
   };

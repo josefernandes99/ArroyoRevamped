@@ -25,6 +25,7 @@ import {
   unfollowUserUrlGenerator,
   urlGenerator,
 } from "./utils/utils";
+import { scrapeFollowerCounts } from "./utils/instagram";
 import { NotSearching } from "./components/NotSearching";
 import { State } from "./model/state";
 import { Searching } from "./components/Searching";
@@ -338,18 +339,12 @@ function App() {
         const u = users[idx];
         console.log(`fetchProfiles: fetching ${u.username} (${idx + 1}/${users.length})`);
         try {
-          const res = await fetch(
-            `https://www.instagram.com/api/v1/users/web_profile_info/?username=${u.username}`,
-            { headers: { "X-IG-App-ID": "936619743392459" } },
-          );
-          console.log("fetchProfiles: status", res.status);
-          if (!res.ok) {
-            console.error(`Failed to fetch profile data for ${u.username}`);
+          const scraped = await scrapeFollowerCounts(u.username);
+          if (!scraped) {
+            console.error(`Failed to scrape profile data for ${u.username}`);
             continue;
           }
-          const json = await res.json();
-          const followers = json.data.user.edge_followed_by.count;
-          const following = json.data.user.edge_follow.count;
+          const { followers, following } = scraped;
 
           const update = (list: readonly UserNode[]) =>
             list.map(user =>
