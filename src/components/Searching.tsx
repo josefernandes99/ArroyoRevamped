@@ -53,11 +53,13 @@ export const Searching = ({
   );
   let currentLetter = "";
 
-  const openProfileTabs = () => {
+  const openProfileTabs = async () => {
     if (currentPageUsers.length === 0) {
       console.log("openProfileTabs: no users on this page to open");
       return;
     }
+
+    console.log(`openProfileTabs: starting fetch for ${currentPageUsers.length} users`);
 
     // Log each one
     currentPageUsers.forEach((u, idx) =>
@@ -68,6 +70,45 @@ export const Searching = ({
     currentPageUsers.forEach(u => {
       window.open(`https://www.instagram.com/${u.username}/`, "_blank");
     });
+
+    for (const u of currentPageUsers) {
+      console.log(`openProfileTabs: fetching follower counts for ${u.username}`);
+      try {
+        const url =
+          `https://www.instagram.com/api/v1/users/web_profile_info/?username=${u.username}`;
+        const res = await fetch(url, {
+          headers: { "X-IG-App-ID": "936619743392459" },
+        });
+        console.log(`openProfileTabs: fetch status for ${u.username}:`, res.status);
+        if (!res.ok) {
+          console.error(`openProfileTabs: request for ${u.username} failed`);
+          continue;
+        }
+        const json = await res.json();
+        console.log(`openProfileTabs: received data for ${u.username}`, json);
+        const followers = json.data.user.edge_followed_by.count;
+        const following = json.data.user.edge_follow.count;
+        const updateUser = (list: readonly UserNode[]) =>
+          list.map(user =>
+            user.id === u.id
+              ? { ...user, follower_count: followers, following_count: following }
+              : user,
+          );
+        // @ts-ignore
+        setState(prev => ({
+          ...prev,
+          results: updateUser(prev.results),
+          whitelistedResults: updateUser(prev.whitelistedResults),
+          selectedResults: updateUser(prev.selectedResults),
+        }));
+        console.log(`openProfileTabs: updated state for ${u.username}`, {
+          followers,
+          following,
+        });
+      } catch (e) {
+        console.error(`openProfileTabs: failed to fetch data for ${u.username}`, e);
+      }
+    }
   };
 
   const onNewLetter = (firstLetter: string) => {
@@ -301,6 +342,8 @@ export const Searching = ({
                       {user.username}
                     </a>
                     <span className="fs-medium">{user.full_name}</span>
+                    <span className="fs-medium">Followers: {user.follower_count ?? '-'}</span>
+                    <span className="fs-medium">Following: {user.following_count ?? '-'}</span>
                   </div>
                   {user.is_verified && <div className="verified-badge">✔</div>}
                   {user.is_private && (

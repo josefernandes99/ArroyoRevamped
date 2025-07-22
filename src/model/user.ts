@@ -19,6 +19,8 @@ export interface UserNode {
     readonly follows_viewer: boolean;
     readonly requested_by_viewer: boolean;
     readonly reel: Reel;
+    readonly follower_count?: number;
+    readonly following_count?: number;
 }
 
 export interface Reel {
