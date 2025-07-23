@@ -306,8 +306,18 @@ function App() {
           const newResults = [
             ...prevState.results,
             ...receivedData.edges.map(edge => {
-              console.log('scan fetched user', edge.node);
-              return edge.node;
+              const n = edge.node;
+              console.log('scan fetched user', n.username);
+              return {
+                id: n.id,
+                username: n.username,
+                full_name: n.full_name,
+                profile_pic_url: n.profile_pic_url,
+                is_private: n.is_private,
+                is_verified: n.is_verified,
+                followed_by_viewer: n.followed_by_viewer,
+                follows_viewer: n.follows_viewer,
+              } as UserNode;
             }),
           ];
 
@@ -441,10 +451,11 @@ function App() {
         throw new Error("csrftoken cookie is null");
       }
 
+      const total = state.selectedResults.length;
       let counter = 0;
       for (const user of state.selectedResults) {
         counter += 1;
-        const percentage = Math.floor((counter / state.selectedResults.length) * 100);
+        const percentage = Math.floor((counter / total) * 100);
         try {
           await fetch(unfollowUserUrlGenerator(user.id), {
             headers: {
@@ -462,6 +473,7 @@ function App() {
             return {
               ...prevState,
               percentage,
+              selectedResults: prevState.selectedResults.filter(u => u.id !== user.id),
               unfollowLog: [
                 ...prevState.unfollowLog,
                 {
@@ -480,6 +492,7 @@ function App() {
             return {
               ...prevState,
               percentage,
+              selectedResults: prevState.selectedResults.filter(u => u.id !== user.id),
               unfollowLog: [
                 ...prevState.unfollowLog,
                 {
@@ -491,7 +504,7 @@ function App() {
           });
         }
         // If unfollowing the last user in the list, no reason to wait.
-        if (user === state.selectedResults[state.selectedResults.length - 1]) {
+        if (counter === total) {
           break;
         }
         await sleep(Math.floor(Math.random() * (timings.timeBetweenUnfollows * 1.2 - timings.timeBetweenUnfollows)) + timings.timeBetweenUnfollows);

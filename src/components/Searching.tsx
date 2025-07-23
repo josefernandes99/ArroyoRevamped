@@ -309,9 +309,10 @@ export const Searching = ({
                 return prevState;
               }
               const newState: State = {
-                ...prevState,
                 status: "unfollowing",
+                searchTerm: prevState.searchTerm,
                 percentage: 0,
+                selectedResults: prevState.selectedResults,
                 unfollowLog: [],
                 filter: {
                   showSucceeded: true,
