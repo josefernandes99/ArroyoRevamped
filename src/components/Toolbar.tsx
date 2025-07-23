@@ -1,6 +1,6 @@
-import React, { ChangeEvent, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { State } from "../model/state";
-import { assertUnreachable, getUsersForDisplay } from "../utils/utils";
+import { assertUnreachable } from "../utils/utils";
 import { SettingMenu } from "./SettingMenu";
 import { SettingIcon } from "./icons/SettingIcon";
 import { Timings } from "../model/timings";
@@ -9,9 +9,8 @@ interface ToolBarProps {
   isActiveProcess: boolean;
   state: State;
   setState: (state: State) => void;
-  scanningPaused: boolean;
-  toggleAllUsers: (e: ChangeEvent<HTMLInputElement>) => void;
-  toggleCurrentePageUsers: (e: ChangeEvent<HTMLInputElement>) => void;
+  toggleAllUsers: () => void;
+  toggleCurrentePageUsers: () => void;
   currentTimings: Timings;
   setTimings: (timings: Timings) => void;
 }
@@ -20,7 +19,6 @@ export const Toolbar = ({
   isActiveProcess,
   state,
   setState,
-  scanningPaused,
   toggleAllUsers,
   toggleCurrentePageUsers,
   currentTimings,
@@ -29,25 +27,7 @@ export const Toolbar = ({
 
   const [setingMenu, setSettingMenu] = useState(false);
 
-  const whitelistSet = useMemo(() => {
-    if (state.status !== "scanning") {
-      return new Set<string>();
-    }
-    return new Set(state.whitelistedResults.map(user => user.id));
-  }, [state]);
 
-  const usersForDisplay = useMemo(() => {
-    if (state.status !== "scanning") {
-      return [] as const;
-    }
-    return getUsersForDisplay(
-      state.results,
-      whitelistSet,
-      state.currentTab,
-      state.searchTerm,
-      state.filter,
-    );
-  }, [state, whitelistSet]);
 
   return (
     <header className="app-header">
@@ -63,7 +43,7 @@ export const Toolbar = ({
         <input
           type="text"
           className="search-bar"
-          placeholder="Search..."
+          placeholder="Search Username..."
           disabled={state.status === "initial"}
           value={state.status === "initial" ? "" : state.searchTerm}
           onChange={e => {
@@ -86,24 +66,22 @@ export const Toolbar = ({
           }}
         />
         {state.status === "scanning" && (
-          <input
+          <button
             title="Select all on this page"
-            type="checkbox"
-            disabled={state.percentage < 100 && !scanningPaused}
-            checked={state.selectedResults.length === usersForDisplay.length}
-            className="toggle-all-checkbox"
+            className="toggle-all-button"
             onClick={toggleCurrentePageUsers}
-          />
+          >
+            Select Page
+          </button>
         )}
         {state.status === "scanning" && (
-          <input
+          <button
             title="Select all"
-            type="checkbox"
-            disabled={state.percentage < 100 && !scanningPaused}
-            checked={state.selectedResults.length === usersForDisplay.length}
-            className="toggle-all-checkbox"
+            className="toggle-all-button"
             onClick={toggleAllUsers}
-          />
+          >
+            Select All
+          </button>
         )}
       </div>
       {(setingMenu) &&

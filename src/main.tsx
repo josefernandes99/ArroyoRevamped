@@ -65,12 +65,15 @@ function App() {
 
   const [scrapedCount, setScrapedCount] = useState(0);
   const [scrapeStart, setScrapeStart] = useState<number | null>(null);
-  const [isFetchingProfiles, setIsFetchingProfiles] = useState(false);
 
   const stateRef = useRef<State>(state);
+  const timingsRef = useRef<Timings>(timings);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+  useEffect(() => {
+    timingsRef.current = timings;
+  }, [timings]);
 
   const whitelistSet = useMemo(() => {
     if (state.status !== "scanning") {
@@ -147,9 +150,8 @@ function App() {
       filter: {
         showNonFollowers: true,
         showFollowers: false,
-        showVerified: true,
+        showPublic: true,
         showPrivate: true,
-        showWithOutProfilePicture: true,
       },
     });
   };
@@ -167,15 +169,13 @@ function App() {
         return;
       }
     }
+    const name = e.currentTarget.name as keyof typeof state.filter;
+    const checked = e.currentTarget.checked;
+    const newFilter = { ...state.filter, [name]: checked } as typeof state.filter;
     setState({
       ...state,
-      // Make sure to clear selected results when changing filter options. This is to avoid having
-      // users selected in the unfollow queue but not visible in the UI, which would be confusing.
       selectedResults: [],
-      filter: {
-        ...state.filter,
-        [e.currentTarget.name]: e.currentTarget.checked,
-      },
+      filter: newFilter,
     });
   };
 
@@ -209,39 +209,29 @@ function App() {
     }
   };
 
-  const toggleAllUsers = (e: ChangeEvent<HTMLInputElement>) => {
+  const toggleAllUsers = () => {
     if (state.status !== "scanning") {
       return;
     }
-    if (e.currentTarget.checked) {
-      setState({
-        ...state,
-        selectedResults: usersForDisplay,
-      });
-    } else {
-      setState({
-        ...state,
-        selectedResults: [],
-      });
-    }
+    const allSelected = state.selectedResults.length === usersForDisplay.length;
+    setState({
+      ...state,
+      selectedResults: allSelected ? [] : usersForDisplay,
+    });
   };
 
   // it will work the same as toggleAllUsers, but it will select everyone on the current page.
-  const toggleCurrentePageUsers = (e: ChangeEvent<HTMLInputElement>) => {
+  const toggleCurrentePageUsers = () => {
     if (state.status !== "scanning") {
       return;
     }
-    if (e.currentTarget.checked) {
-      setState({
-        ...state,
-        selectedResults: currentPageUsers,
-      });
-    } else {
-      setState({
-        ...state,
-        selectedResults: [],
-      });
-    }
+    const allSelected = currentPageUsers.every(u =>
+      state.selectedResults.includes(u),
+    );
+    setState({
+      ...state,
+      selectedResults: allSelected ? [] : currentPageUsers,
+    });
   };
 
   useEffect(() => {
@@ -307,7 +297,6 @@ function App() {
             ...prevState.results,
             ...receivedData.edges.map(edge => {
               const n = edge.node;
-              console.log('scan fetched user', n.username);
               return {
                 id: n.id,
                 username: n.username,
@@ -333,15 +322,25 @@ function App() {
 
         while (scanningPaused) {
           await sleep(1000);
-          console.info("Scan paused");
         }
 
-        await sleep(Math.floor(Math.random() * (timings.timeBetweenSearchCycles - timings.timeBetweenSearchCycles * 0.7)) + timings.timeBetweenSearchCycles);
+        await sleep(
+          Math.floor(
+            Math.random() *
+              (timingsRef.current.timeBetweenSearchCycles -
+                timingsRef.current.timeBetweenSearchCycles * 0.7),
+          ) + timingsRef.current.timeBetweenSearchCycles,
+        );
         scrollCycle++;
         if (scrollCycle > 6) {
           scrollCycle = 0;
-          setToast({ show: true, text: `Sleeping ${timings.timeToWaitAfterFiveSearchCycles / 1000 } seconds to prevent getting temp blocked` });
-          await sleep(timings.timeToWaitAfterFiveSearchCycles);
+          setToast({
+            show: true,
+            text: `Sleeping ${
+              timingsRef.current.timeToWaitAfterFiveSearchCycles / 1000
+            } seconds to prevent getting temp blocked`,
+          });
+          await sleep(timingsRef.current.timeToWaitAfterFiveSearchCycles);
         }
         setToast({ show: false });
       }
@@ -354,14 +353,11 @@ function App() {
 
   useEffect(() => {
     const fetchProfiles = async () => {
-      console.log("fetchProfiles: triggered", { status: state.status });
       if (state.status !== "scanning") {
-        console.log("fetchProfiles: wrong status");
         return;
       }
 
       followerFetchStarted = true;
-      setIsFetchingProfiles(true);
       setScrapeStart(Date.now());
       setScrapedCount(0);
       let cycle = 0;
@@ -374,11 +370,11 @@ function App() {
           continue;
         }
         const u = s.results[idx];
-        console.log(`fetchProfiles: fetching ${u.username} (${idx + 1}/${s.results.length})`);
         try {
           const scraped = await scrapeFollowerCounts(u.username);
           if (!scraped) {
             console.error(`Failed to scrape profile data for ${u.username}`);
+            idx++;
             continue;
           }
           const { followers, following, biography } = scraped;
@@ -406,6 +402,8 @@ function App() {
           setScrapedCount(idx + 1);
         } catch (e) {
           console.error(`Failed fetching profile info for ${u.username}`, e);
+          idx++;
+          continue;
         }
 
         while (scanningPaused) {
@@ -414,28 +412,29 @@ function App() {
 
         await sleep(
           Math.floor(
-            Math.random() * (timings.timeBetweenProfileFetches - timings.timeBetweenProfileFetches * 0.7),
-          ) + timings.timeBetweenProfileFetches,
+            Math.random() *
+              (timingsRef.current.timeBetweenProfileFetches -
+                timingsRef.current.timeBetweenProfileFetches * 0.7),
+          ) + timingsRef.current.timeBetweenProfileFetches,
         );
         cycle++;
         if (cycle >= 5) {
-          console.log(`fetchProfiles: cooldown for ${timings.timeToWaitAfterFiveProfileFetches}ms`);
           cycle = 0;
           setToast({
             show: true,
-            text: `Sleeping ${timings.timeToWaitAfterFiveProfileFetches / 1000} seconds to prevent getting temp blocked`,
+            text: `Sleeping ${
+              timingsRef.current.timeToWaitAfterFiveProfileFetches / 1000
+            } seconds to prevent getting temp blocked`,
           });
-          await sleep(timings.timeToWaitAfterFiveProfileFetches);
+          await sleep(timingsRef.current.timeToWaitAfterFiveProfileFetches);
           setToast({ show: false });
         }
         idx++;
       }
       setToast({ show: true, text: "Profile fetching completed!" });
-      setIsFetchingProfiles(false);
-      console.log("fetchProfiles: completed");
     };
 
-    if (!followerFetchStarted && state.status === "scanning" && state.results.length > 0 && state.percentage === 100) {
+    if (!followerFetchStarted && state.status === "scanning" && state.results.length > 0) {
       fetchProfiles();
     }
   }, [state, timings]);
@@ -507,11 +506,22 @@ function App() {
         if (counter === total) {
           break;
         }
-        await sleep(Math.floor(Math.random() * (timings.timeBetweenUnfollows * 1.2 - timings.timeBetweenUnfollows)) + timings.timeBetweenUnfollows);
+        await sleep(
+          Math.floor(
+            Math.random() *
+              (timingsRef.current.timeBetweenUnfollows * 1.2 -
+                timingsRef.current.timeBetweenUnfollows),
+          ) + timingsRef.current.timeBetweenUnfollows,
+        );
 
         if (counter % 5 === 0) {
-          setToast({ show: true, text: `Sleeping ${timings.timeToWaitAfterFiveUnfollows / 60000 } minutes to prevent getting temp blocked` });
-          await sleep(timings.timeToWaitAfterFiveUnfollows);
+          setToast({
+            show: true,
+            text: `Sleeping ${
+              timingsRef.current.timeToWaitAfterFiveUnfollows / 60000
+            } minutes to prevent getting temp blocked`,
+          });
+          await sleep(timingsRef.current.timeToWaitAfterFiveUnfollows);
         }
         setToast({ show: false });
       }
@@ -537,7 +547,6 @@ function App() {
         scanningPaused={scanningPaused}
         scrapedCount={scrapedCount}
         scrapeStart={scrapeStart}
-        isFetchingProfiles={isFetchingProfiles}
         timings={timings}
         UserCheckIcon={UserCheckIcon}
         UserUncheckIcon={UserUncheckIcon}
@@ -562,7 +571,6 @@ function App() {
         <Toolbar
           state={state}
           setState={setState}
-          scanningPaused={scanningPaused}
           isActiveProcess={isActiveProcess}
           toggleAllUsers={toggleAllUsers}
           toggleCurrentePageUsers={toggleCurrentePageUsers}

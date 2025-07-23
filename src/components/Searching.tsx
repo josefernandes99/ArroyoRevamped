@@ -1,4 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { asciiNormalize } from "../utils/utils";
+import { VerifiedIcon } from "./icons/VerifiedIcon";
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -19,9 +21,7 @@ import {
   getMaxPage,
   getUsersForDisplay,
   sortUsers,
-  sleep,
 } from "../utils/utils";
-import { scrapeFollowerCounts } from "../utils/instagram";
 import { ScanningState, State, SortKey } from "../model/state";
 import { UserNode } from "../model/user";
 import { WHITELISTED_RESULTS_STORAGE_KEY } from "../constants/constants";
@@ -39,7 +39,6 @@ export interface SearchingProps {
   UserUncheckIcon: React.FC;
   scrapedCount: number;
   scrapeStart: number | null;
-  isFetchingProfiles: boolean;
   timings: Timings;
 }
 
@@ -54,26 +53,39 @@ export const Searching = ({
   UserUncheckIcon,
   scrapedCount,
   scrapeStart,
-  isFetchingProfiles,
   timings,
 }: SearchingProps) => {
   if (state.status !== "scanning") {
     return null;
   }
 
+  const [bioSearch, setBioSearch] = useState("");
+
   const whitelistSet = useMemo(() => {
     return new Set(state.whitelistedResults.map(user => user.id));
   }, [state]);
 
   const usersForDisplay = useMemo(() => {
-    return getUsersForDisplay(
+    const base = getUsersForDisplay(
       state.results,
       whitelistSet,
       state.currentTab,
       state.searchTerm,
       state.filter,
     );
-  }, [state, whitelistSet]);
+    const keywords = bioSearch
+      .split(',')
+      .map(k => asciiNormalize(k).trim().toLowerCase())
+      .filter(k => k);
+    if (keywords.length === 0) {
+      return base;
+    }
+    return base.filter(u => {
+      if (!u.biography) return false;
+      const bio = asciiNormalize(u.biography).toLowerCase();
+      return keywords.some(k => bio.includes(k));
+    });
+  }, [state, whitelistSet, bioSearch]);
   const selectedIds = useMemo(() => new Set(state.selectedResults.map(u => u.id)), [state.selectedResults]);
   const sortedUsersForDisplay = useMemo(
     () => sortUsers(usersForDisplay, state.sortColumns, selectedIds),
@@ -120,65 +132,9 @@ export const Searching = ({
     );
   };
 
-  const openProfileTabs = async () => {
-    if (currentPageUsers.length === 0) {
-      console.log("openProfileTabs: no users on this page to open");
-      return;
-    }
-
-    console.log(`openProfileTabs: starting fetch for ${currentPageUsers.length} users`);
-
-    let cycle = 0;
+  const openProfileTabs = () => {
     for (const u of currentPageUsers) {
-      console.log(`openProfileTabs: scraping follower counts for ${u.username}`);
-      try {
-        const scraped = await scrapeFollowerCounts(u.username);
-        if (!scraped) {
-          console.error(`openProfileTabs: failed to scrape data for ${u.username}`);
-          continue;
-        }
-        const { followers, following, biography } = scraped;
-        const updateUser = (list: readonly UserNode[]) =>
-          list.map(user =>
-            user.id === u.id
-              ? {
-                  ...user,
-                  follower_count: followers,
-                  following_count: following,
-                  biography: user.biography ?? biography,
-                }
-              : user,
-          );
-        // @ts-ignore
-        setState(prev => ({
-          ...prev,
-          results: updateUser(prev.results),
-          whitelistedResults: updateUser(prev.whitelistedResults),
-          selectedResults: updateUser(prev.selectedResults),
-        }));
-        console.log(`openProfileTabs: updated state for ${u.username}`, {
-          followers,
-          following,
-          biography,
-        });
-      } catch (e) {
-        console.error(`openProfileTabs: failed to fetch data for ${u.username}`, e);
-      }
-
-      while (scanningPaused) {
-        await sleep(1000);
-      }
-
-      await sleep(
-        Math.floor(
-          Math.random() * (timings.timeBetweenProfileFetches - timings.timeBetweenProfileFetches * 0.7),
-        ) + timings.timeBetweenProfileFetches,
-      );
-      cycle++;
-      if (cycle >= 5) {
-        await sleep(timings.timeToWaitAfterFiveProfileFetches);
-        cycle = 0;
-      }
+      window.open(`/${u.username}`, "_blank");
     }
   };
 
@@ -209,11 +165,11 @@ export const Searching = ({
           <label className="badge m-small">
             <input
               type="checkbox"
-              name="showVerified"
-              checked={state.filter.showVerified}
+              name="showPublic"
+              checked={state.filter.showPublic}
               onChange={handleScanFilter}
             />
-            &nbsp;Verified
+            &nbsp;Public
           </label>
           <label className="badge m-small">
             <input
@@ -224,25 +180,16 @@ export const Searching = ({
             />
             &nbsp;Private
           </label>
-          <label className="badge m-small">
-            <input
-              type="checkbox"
-              name="showWithOutProfilePicture"
-              checked={state.filter.showWithOutProfilePicture}
-              onChange={handleScanFilter}
-            />
-            &nbsp;Without Profile Picture
-          </label>
         </menu>
         <div className="grow">
           <p>Displayed: {usersForDisplay.length}</p>
-          {isFetchingProfiles && (
+          {scrapeStart !== null && (
             <p>Scraped: {scrapedCount}</p>
           )}
           <p>Total: {state.results.length}</p>
-          {isFetchingProfiles && (
+          {scrapeStart !== null && (
             <p>
-              Elapsed: {elapsed} | ETA: {eta}
+              Scraping: {elapsed} / {eta}
             </p>
           )}
         </div>
@@ -364,7 +311,16 @@ export const Searching = ({
             <tr>
               <th>Profile</th>
               <th onClick={() => handleSort('username')}>{renderHeader('username', 'User')}</th>
-              <th>Bio</th>
+              <th>
+                <p>Bio</p>
+                <input
+                  type="text"
+                  className="bio-search"
+                  placeholder="Search Keywords..."
+                  value={bioSearch}
+                  onChange={e => setBioSearch(e.currentTarget.value)}
+                />
+              </th>
               <th onClick={() => handleSort('followers')}>{renderHeader('followers', 'Followers')}</th>
               <th onClick={() => handleSort('following')}>{renderHeader('following', 'Following')}</th>
               <th onClick={() => handleSort('ratio')}>{renderHeader('ratio', 'Ratio')}</th>
@@ -426,12 +382,17 @@ export const Searching = ({
                   <td>
                     <div className="flex column">
                       <a
-                        className="fs-xlarge"
+                        className="fs-xlarge username-link"
                         target="_blank"
                         href={`/${user.username}`}
                         rel="noreferrer"
                       >
-                        {user.username}
+                        <span>{user.username}</span>
+                        {user.is_verified && (
+                          <span className="verified-badge">
+                            <VerifiedIcon />
+                          </span>
+                        )}
                       </a>
                       <span className="fs-medium">{user.full_name}</span>
                     </div>

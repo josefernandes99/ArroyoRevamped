@@ -15,7 +15,6 @@ export function parseInstagramNumber(str: string): number {
 export async function scrapeFollowerCounts(
   username: string,
 ): Promise<{ followers: number; following: number; biography: string | null } | null> {
-  console.log(`scrapeFollowerCounts: fetching ${username}`);
   try {
     let biography: string | null = null;
 
@@ -24,7 +23,6 @@ export async function scrapeFollowerCounts(
       throw new Error(`http ${res.status}`);
     }
     const html = await res.text();
-    console.log('scrapeFollowerCounts: html length', html.length);
 
     // fallback to meta description parsing (may vary by locale)
     const descDoc = new DOMParser().parseFromString(html, 'text/html');
@@ -53,11 +51,6 @@ export async function scrapeFollowerCounts(
             biography = bioMatch[1];
           }
         }
-        console.log(`scrapeFollowerCounts: scraped ${username} via html section`, {
-          followers,
-          following,
-          biography,
-        });
         return { followers, following, biography };
       }
     }
@@ -78,11 +71,7 @@ export async function scrapeFollowerCounts(
         if (!biography && bioMatch) {
           biography = bioMatch[1];
         }
-        console.log(`scrapeFollowerCounts: scraped ${username} via meta`, {
-          followers,
-          following,
-          biography,
-        });
+        
         return { followers, following, biography };
       }
       console.error('scrapeFollowerCounts: description regex mismatch', desc);
@@ -91,7 +80,7 @@ export async function scrapeFollowerCounts(
     const temp = document.createElement('div');
     temp.innerHTML = html;
     const pageText = temp.innerText;
-    console.log('scrapeFollowerCounts: page text length', pageText.length);
+    
     let followersMatch =
       pageText.match(/([\d.,MK]+)\s*(followers|seguidores)/i) ||
       pageText.match(/(followers|seguidores)\s*([\d.,MK]+)/i);
@@ -112,11 +101,6 @@ export async function scrapeFollowerCounts(
           }
         }
       }
-      console.log(`scrapeFollowerCounts: scraped ${username} via text`, {
-        followers,
-        following,
-        biography,
-      });
       return { followers, following, biography };
     }
 

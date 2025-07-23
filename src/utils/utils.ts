@@ -1,5 +1,5 @@
 import { UserNode } from "../model/user";
-import { UNFOLLOWERS_PER_PAGE, WITHOUT_PROFILE_PICTURE_URL_ID } from "../constants/constants";
+import { UNFOLLOWERS_PER_PAGE } from "../constants/constants";
 import { ScanningTab } from "../model/scanning-tab";
 import { ScanningFilter } from "../model/scanning-filter";
 import { UnfollowLogEntry } from "../model/unfollow-log-entry";
@@ -55,19 +55,16 @@ export function getUsersForDisplay(
         assertUnreachable(currentTab);
     }
     if (!filter.showPrivate && result.is_private) {
-      continue;
+        continue;
     }
-    if (!filter.showVerified && result.is_verified) {
-      continue;
+    if (!filter.showPublic && !result.is_private) {
+        continue;
     }
     if (!filter.showFollowers && result.follows_viewer) {
-      continue;
+        continue;
     }
     if (!filter.showNonFollowers && !result.follows_viewer) {
-      continue;
-    }
-    if(!filter.showWithOutProfilePicture && result.profile_pic_url.includes(WITHOUT_PROFILE_PICTURE_URL_ID)){
-      continue;
+        continue;
     }
     const userMatchesSearchTerm =
       result.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -105,7 +102,29 @@ export function sortUsers(
   selectedIds: ReadonlySet<string>,
 ): readonly UserNode[] {
   const list = [...users];
+
+  const hasMissingAsc = (user: UserNode) =>
+    sort.some(s => {
+      if (s.direction !== 'asc') return false;
+      switch (s.key) {
+        case 'followers':
+          return user.follower_count === undefined;
+        case 'following':
+          return user.following_count === undefined;
+        case 'ratio':
+          return (
+            user.follower_count === undefined ||
+            user.following_count === undefined
+          );
+        default:
+          return false;
+      }
+    });
   list.sort((a, b) => {
+    const aMissing = hasMissingAsc(a);
+    const bMissing = hasMissingAsc(b);
+    if (aMissing && !bMissing) return 1;
+    if (!aMissing && bMissing) return -1;
     for (const s of sort) {
       let av: any;
       let bv: any;
@@ -115,16 +134,37 @@ export function sortUsers(
           bv = b.username.toLowerCase();
           break;
         case 'followers':
-          av = a.follower_count ?? 0;
-          bv = b.follower_count ?? 0;
+          av = a.follower_count;
+          bv = b.follower_count;
+          if (s.direction === 'asc') {
+            av = av ?? Infinity;
+            bv = bv ?? Infinity;
+          } else {
+            av = av ?? -Infinity;
+            bv = bv ?? -Infinity;
+          }
           break;
         case 'following':
-          av = a.following_count ?? 0;
-          bv = b.following_count ?? 0;
+          av = a.following_count;
+          bv = b.following_count;
+          if (s.direction === 'asc') {
+            av = av ?? Infinity;
+            bv = bv ?? Infinity;
+          } else {
+            av = av ?? -Infinity;
+            bv = bv ?? -Infinity;
+          }
           break;
         case 'ratio':
-          av = a.follower_count && a.following_count ? a.following_count / a.follower_count : 0;
-          bv = b.follower_count && b.following_count ? b.following_count / b.follower_count : 0;
+          av = a.follower_count && a.following_count ? a.following_count / a.follower_count : undefined;
+          bv = b.follower_count && b.following_count ? b.following_count / b.follower_count : undefined;
+          if (s.direction === 'asc') {
+            av = av ?? Infinity;
+            bv = bv ?? Infinity;
+          } else {
+            av = av ?? -Infinity;
+            bv = bv ?? -Infinity;
+          }
           break;
         case 'status':
           av = a.is_private ? 1 : 0;
@@ -183,5 +223,23 @@ export function urlGenerator(nextCode?: string): string {
 
 export function unfollowUserUrlGenerator(idToUnfollow: string): string {
   return `https://www.instagram.com/web/friendships/${idToUnfollow}/unfollow/`;
+}
+
+export function asciiNormalize(text: string): string {
+  let out = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (code >= 0x1f1e6 && code <= 0x1f1ff) {
+      out += String.fromCharCode(code - 0x1f1e6 + 65);
+      continue;
+    }
+    if (code >= 0x1f000) {
+      // Drop other emoji and symbols
+      continue;
+    }
+    out += ch;
+  }
+  out = out.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  return out;
 }
 
