@@ -14,52 +14,113 @@ export function parseInstagramNumber(str: string): number {
 
 export async function scrapeFollowerCounts(
   username: string,
-): Promise<{ followers: number; following: number } | null> {
+): Promise<{ followers: number; following: number; biography: string | null } | null> {
   console.log(`scrapeFollowerCounts: fetching ${username}`);
   try {
+    let biography: string | null = null;
+
     const res = await fetch(`/${username}/`, { credentials: 'include' });
     if (!res.ok) {
       throw new Error(`http ${res.status}`);
     }
     const html = await res.text();
-
-    // try to parse counts from embedded JSON first (language independent)
-    const followMatch = html.match(/"edge_followed_by"\s*:\s*\{"count"\s*:\s*(\d+)/);
-    const followingMatch = html.match(/"edge_follow"\s*:\s*\{"count"\s*:\s*(\d+)/);
-    console.log('scrapeFollowerCounts: json matches', {
-      followMatch,
-      followingMatch,
-    });
-    if (followMatch && followingMatch) {
-      const followers = parseInt(followMatch[1], 10);
-      const following = parseInt(followingMatch[1], 10);
-      console.log(`scrapeFollowerCounts: scraped ${username} via JSON`, {
-        followers,
-        following,
-      });
-      return { followers, following };
-    }
+    console.log('scrapeFollowerCounts: html length', html.length);
 
     // fallback to meta description parsing (may vary by locale)
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const descDoc = new DOMParser().parseFromString(html, 'text/html');
     const desc =
-      doc.querySelector('meta[name="description"]')?.getAttribute('content') ||
-      doc
+      descDoc.querySelector('meta[name="description"]')?.getAttribute('content') ||
+      descDoc
         .querySelector('meta[property="og:description"]')
         ?.getAttribute('content');
-    if (!desc) throw new Error('description not found');
-    const match = desc.match(/([\d.,MK]+)\s*(?:followers|seguidores).*?(?:following|a seguir)\s*([\d.,MK]+)/i);
-    if (!match) {
-      console.error('scrapeFollowerCounts: description regex mismatch', desc);
-      throw new Error('regex mismatch');
+
+    const escaped = username.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const userSection = html.match(
+      new RegExp(`"username":"${escaped}"([\s\S]*?)"edge_owner_to_timeline_media"`),
+    );
+    if (userSection) {
+      const sec = userSection[1];
+      const followersMatch = sec.match(/"edge_followed_by":\{"count":(\d+)\}/);
+      const followingMatch = sec.match(/"edge_follow":\{"count":(\d+)\}/);
+      const bioMatch = sec.match(/"biography":"((?:\\.|[^\"])*)"/);
+      if (followersMatch && followingMatch) {
+        const followers = parseInt(followersMatch[1], 10);
+        const following = parseInt(followingMatch[1], 10);
+        if (bioMatch) {
+          try {
+            biography = JSON.parse(`"${bioMatch[1]}"`);
+          } catch {
+            biography = bioMatch[1];
+          }
+        }
+        console.log(`scrapeFollowerCounts: scraped ${username} via html section`, {
+          followers,
+          following,
+          biography,
+        });
+        return { followers, following, biography };
+      }
     }
-    const followers = parseInstagramNumber(match[1]);
-    const following = parseInstagramNumber(match[2]);
-    console.log(`scrapeFollowerCounts: scraped ${username} via meta`, {
-      followers,
-      following,
-    });
-    return { followers, following };
+
+    if (desc) {
+      const followerMatch =
+        desc.match(/([\d.,MK]+)\s*(followers|seguidores)/i) ||
+        desc.match(/(followers|seguidores)\s*([\d.,MK]+)/i);
+      const followingMatch =
+        desc.match(/([\d.,MK]+)\s*(following|seguindo)/i) ||
+        desc.match(/(a seguir|seguindo|following)\s*([\d.,MK]+)/i);
+
+      const bioMatch = desc.match(/Instagram:\s*"([^"]*)/i);
+
+      if (followerMatch && followingMatch) {
+        const followers = parseInstagramNumber(followerMatch[1] ?? followerMatch[2]);
+        const following = parseInstagramNumber(followingMatch[1] ?? followingMatch[2]);
+        if (!biography && bioMatch) {
+          biography = bioMatch[1];
+        }
+        console.log(`scrapeFollowerCounts: scraped ${username} via meta`, {
+          followers,
+          following,
+          biography,
+        });
+        return { followers, following, biography };
+      }
+      console.error('scrapeFollowerCounts: description regex mismatch', desc);
+    }
+
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const pageText = temp.innerText;
+    console.log('scrapeFollowerCounts: page text length', pageText.length);
+    let followersMatch =
+      pageText.match(/([\d.,MK]+)\s*(followers|seguidores)/i) ||
+      pageText.match(/(followers|seguidores)\s*([\d.,MK]+)/i);
+    let followingMatch =
+      pageText.match(/([\d.,MK]+)\s*(following|seguindo)/i) ||
+      pageText.match(/(a seguir|seguindo|following)\s*([\d.,MK]+)/i);
+
+    if (followersMatch && followingMatch) {
+      const followers = parseInstagramNumber(followersMatch[1] ?? followersMatch[2]);
+      const following = parseInstagramNumber(followingMatch[1] ?? followingMatch[2]);
+      if (!biography) {
+        const followingIdx = pageText.indexOf(followingMatch[0]);
+        if (followingIdx !== -1) {
+          const after = pageText.slice(followingIdx + followingMatch[0].length);
+          const bioLine = after.split(/\n+/).map(l => l.trim()).find(l => l);
+          if (bioLine) {
+            biography = bioLine;
+          }
+        }
+      }
+      console.log(`scrapeFollowerCounts: scraped ${username} via text`, {
+        followers,
+        following,
+        biography,
+      });
+      return { followers, following, biography };
+    }
+
+    throw new Error('unable to extract follower counts');
   } catch (err) {
     console.error(`scrapeFollowerCounts: error for ${username}`, err);
     return null;

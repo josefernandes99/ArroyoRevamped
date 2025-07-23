@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useEffect, useMemo, useState } from "react";
+import React, { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { render } from "react-dom";
 import "./styles.scss";
 
@@ -27,7 +27,7 @@ import {
 } from "./utils/utils";
 import { scrapeFollowerCounts } from "./utils/instagram";
 import { NotSearching } from "./components/NotSearching";
-import { State } from "./model/state";
+import { State, ScanningState } from "./model/state";
 import { Searching } from "./components/Searching";
 import { Toolbar } from "./components/Toolbar";
 import { Unfollowing } from "./components/Unfollowing";
@@ -62,6 +62,15 @@ function App() {
       timeToWaitAfterFiveUnfollows: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS,
     }
   );
+
+  const [scrapedCount, setScrapedCount] = useState(0);
+  const [scrapeStart, setScrapeStart] = useState<number | null>(null);
+  const [isFetchingProfiles, setIsFetchingProfiles] = useState(false);
+
+  const stateRef = useRef<State>(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const whitelistSet = useMemo(() => {
     if (state.status !== "scanning") {
@@ -123,6 +132,8 @@ function App() {
     const whitelistedResultsFromStorage: string | null = localStorage.getItem(WHITELISTED_RESULTS_STORAGE_KEY);
     const whitelistedResults: readonly UserNode[] =
       whitelistedResultsFromStorage === null ? [] : JSON.parse(whitelistedResultsFromStorage);
+    followerFetchStarted = false;
+    scanningPaused = false;
     setState({
       status: "scanning",
       page: 1,
@@ -264,7 +275,6 @@ function App() {
       if (state.status !== "scanning") {
         return;
       }
-      const results = [...state.results];
       let scrollCycle = 0;
       let url = urlGenerator();
       let hasNext = true;
@@ -287,21 +297,30 @@ function App() {
         hasNext = receivedData.page_info.has_next_page;
         url = urlGenerator(receivedData.page_info.end_cursor);
         currentFollowedUsersCount += receivedData.edges.length;
-        receivedData.edges.forEach(x => results.push(x.node));
 
         setState(prevState => {
           if (prevState.status !== "scanning") {
             return prevState;
           }
+
+          const newResults = [
+            ...prevState.results,
+            ...receivedData.edges.map(edge => {
+              console.log('scan fetched user', edge.node);
+              return edge.node;
+            }),
+          ];
+
           const newState: State = {
             ...prevState,
             percentage: Math.floor((currentFollowedUsersCount / totalFollowedUsersCount) * 100),
-            results,
+            results: newResults,
           };
           return newState;
         });
 
         // Pause scanning if user requested so.
+
         while (scanningPaused) {
           await sleep(1000);
           console.info("Scan paused");
@@ -326,29 +345,44 @@ function App() {
   useEffect(() => {
     const fetchProfiles = async () => {
       console.log("fetchProfiles: triggered", { status: state.status });
-      if (state.status !== "scanning" || state.percentage < 100) {
-        console.log("fetchProfiles: conditions not met");
+      if (state.status !== "scanning") {
+        console.log("fetchProfiles: wrong status");
         return;
       }
 
       followerFetchStarted = true;
-      const users = [...state.results];
-      console.log(`fetchProfiles: ${users.length} profiles to process`);
+      setIsFetchingProfiles(true);
+      setScrapeStart(Date.now());
+      setScrapedCount(0);
       let cycle = 0;
-      for (let idx = 0; idx < users.length; idx++) {
-        const u = users[idx];
-        console.log(`fetchProfiles: fetching ${u.username} (${idx + 1}/${users.length})`);
+      let idx = 0;
+      while (true) {
+        const s = stateRef.current as ScanningState;
+        if (idx >= s.results.length) {
+          if (s.percentage === 100) break;
+          await sleep(500);
+          continue;
+        }
+        const u = s.results[idx];
+        console.log(`fetchProfiles: fetching ${u.username} (${idx + 1}/${s.results.length})`);
         try {
           const scraped = await scrapeFollowerCounts(u.username);
           if (!scraped) {
             console.error(`Failed to scrape profile data for ${u.username}`);
             continue;
           }
-          const { followers, following } = scraped;
+          const { followers, following, biography } = scraped;
 
           const update = (list: readonly UserNode[]) =>
             list.map(user =>
-              user.id === u.id ? { ...user, follower_count: followers, following_count: following } : user,
+              user.id === u.id
+                ? {
+                    ...user,
+                    follower_count: followers,
+                    following_count: following,
+                    biography: user.biography ?? biography,
+                  }
+                : user,
             );
           setState(prev => {
             if (prev.status !== "scanning") return prev;
@@ -359,8 +393,13 @@ function App() {
               selectedResults: update(prev.selectedResults),
             };
           });
+          setScrapedCount(idx + 1);
         } catch (e) {
           console.error(`Failed fetching profile info for ${u.username}`, e);
+        }
+
+        while (scanningPaused) {
+          await sleep(1000);
         }
 
         await sleep(
@@ -379,12 +418,14 @@ function App() {
           await sleep(timings.timeToWaitAfterFiveProfileFetches);
           setToast({ show: false });
         }
+        idx++;
       }
       setToast({ show: true, text: "Profile fetching completed!" });
+      setIsFetchingProfiles(false);
       console.log("fetchProfiles: completed");
     };
 
-    if (!followerFetchStarted && state.status === "scanning" && state.percentage === 100) {
+    if (!followerFetchStarted && state.status === "scanning" && state.results.length > 0 && state.percentage === 100) {
       fetchProfiles();
     }
   }, [state, timings]);
@@ -481,6 +522,10 @@ function App() {
         pauseScan={pauseScan}
         setState={setState}
         scanningPaused={scanningPaused}
+        scrapedCount={scrapedCount}
+        scrapeStart={scrapeStart}
+        isFetchingProfiles={isFetchingProfiles}
+        timings={timings}
         UserCheckIcon={UserCheckIcon}
         UserUncheckIcon={UserUncheckIcon}
       ></Searching>;

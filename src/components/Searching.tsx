@@ -1,4 +1,18 @@
 import React, { useMemo } from "react";
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSeconds / 3600)
+    .toString()
+    .padStart(2, "0");
+  const mins = Math.floor((totalSeconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = Math.floor(totalSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${hrs}:${mins}:${secs}`;
+}
 import {
   assertUnreachable,
   getCurrentPageUnfollowers,
@@ -10,7 +24,8 @@ import {
 import { scrapeFollowerCounts } from "../utils/instagram";
 import { ScanningState, State, SortKey } from "../model/state";
 import { UserNode } from "../model/user";
-import { WHITELISTED_RESULTS_STORAGE_KEY, DEFAULT_TIME_BETWEEN_PROFILE_FETCHES, DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES } from "../constants/constants";
+import { WHITELISTED_RESULTS_STORAGE_KEY } from "../constants/constants";
+import { Timings } from "../model/timings";
 
 
 export interface SearchingProps {
@@ -22,6 +37,10 @@ export interface SearchingProps {
   toggleUser: (checked: boolean, user: UserNode) => void;
   UserCheckIcon: React.FC;
   UserUncheckIcon: React.FC;
+  scrapedCount: number;
+  scrapeStart: number | null;
+  isFetchingProfiles: boolean;
+  timings: Timings;
 }
 
 export const Searching = ({
@@ -33,6 +52,10 @@ export const Searching = ({
   toggleUser,
   UserCheckIcon,
   UserUncheckIcon,
+  scrapedCount,
+  scrapeStart,
+  isFetchingProfiles,
+  timings,
 }: SearchingProps) => {
   if (state.status !== "scanning") {
     return null;
@@ -60,6 +83,14 @@ export const Searching = ({
     () => getCurrentPageUnfollowers(sortedUsersForDisplay, state.page),
     [sortedUsersForDisplay, state.page],
   );
+
+  const elapsedMs = scrapeStart ? Date.now() - scrapeStart : 0;
+  const remaining = state.results.length - scrapedCount;
+  const etaMs =
+    remaining * timings.timeBetweenProfileFetches +
+    Math.floor(remaining / 5) * timings.timeToWaitAfterFiveProfileFetches;
+  const elapsed = formatDuration(elapsedMs);
+  const eta = formatDuration(etaMs);
 
   const handleSort = (key: SortKey) => {
     const idx = state.sortColumns.findIndex(c => c.key === key);
@@ -106,11 +137,16 @@ export const Searching = ({
           console.error(`openProfileTabs: failed to scrape data for ${u.username}`);
           continue;
         }
-        const { followers, following } = scraped;
+        const { followers, following, biography } = scraped;
         const updateUser = (list: readonly UserNode[]) =>
           list.map(user =>
             user.id === u.id
-              ? { ...user, follower_count: followers, following_count: following }
+              ? {
+                  ...user,
+                  follower_count: followers,
+                  following_count: following,
+                  biography: user.biography ?? biography,
+                }
               : user,
           );
         // @ts-ignore
@@ -123,19 +159,24 @@ export const Searching = ({
         console.log(`openProfileTabs: updated state for ${u.username}`, {
           followers,
           following,
+          biography,
         });
       } catch (e) {
         console.error(`openProfileTabs: failed to fetch data for ${u.username}`, e);
       }
 
+      while (scanningPaused) {
+        await sleep(1000);
+      }
+
       await sleep(
         Math.floor(
-          Math.random() * (DEFAULT_TIME_BETWEEN_PROFILE_FETCHES - DEFAULT_TIME_BETWEEN_PROFILE_FETCHES * 0.7),
-        ) + DEFAULT_TIME_BETWEEN_PROFILE_FETCHES,
+          Math.random() * (timings.timeBetweenProfileFetches - timings.timeBetweenProfileFetches * 0.7),
+        ) + timings.timeBetweenProfileFetches,
       );
       cycle++;
       if (cycle >= 5) {
-        await sleep(DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES);
+        await sleep(timings.timeToWaitAfterFiveProfileFetches);
         cycle = 0;
       }
     }
@@ -195,7 +236,15 @@ export const Searching = ({
         </menu>
         <div className="grow">
           <p>Displayed: {usersForDisplay.length}</p>
+          {isFetchingProfiles && (
+            <p>Scraped: {scrapedCount}</p>
+          )}
           <p>Total: {state.results.length}</p>
+          {isFetchingProfiles && (
+            <p>
+              Elapsed: {elapsed} | ETA: {eta}
+            </p>
+          )}
         </div>
         <div className="grow t-center">
           <p>Pages</p>
@@ -314,6 +363,7 @@ export const Searching = ({
             <tr>
               <th>Profile</th>
               <th onClick={() => handleSort('username')}>{renderHeader('username', 'User')}</th>
+              <th>Bio</th>
               <th onClick={() => handleSort('followers')}>{renderHeader('followers', 'Followers')}</th>
               <th onClick={() => handleSort('following')}>{renderHeader('following', 'Following')}</th>
               <th onClick={() => handleSort('ratio')}>{renderHeader('ratio', 'Ratio')}</th>
@@ -385,6 +435,7 @@ export const Searching = ({
                       <span className="fs-medium">{user.full_name}</span>
                     </div>
                   </td>
+                  <td className="fs-medium">{user.biography ?? '-'}</td>
                   <td className="fs-medium">{user.follower_count ?? '-'}</td>
                   <td className="fs-medium">{user.following_count ?? '-'}</td>
                   <td className={`fs-medium ${ratioClass}`}>{ratio.toFixed(0)}%</td>

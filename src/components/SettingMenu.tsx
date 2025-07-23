@@ -53,7 +53,7 @@ export const SettingMenu = ({
               type="number"
               id="searchCycles"
               name="searchCycles"
-              min={500}
+              min={1000}
               max={999999}
               value={timeBetweenSearchCycles}
               onChange={(e) => handleInputChange(e, setTimeBetweenSearchCycles)}
@@ -67,7 +67,7 @@ export const SettingMenu = ({
               type="number"
               id="profileFetches"
               name="profileFetches"
-              min={500}
+              min={1000}
               max={999999}
               value={timeBetweenProfileFetches}
               onChange={(e) => handleInputChange(e, setTimeBetweenProfileFetches)}
@@ -81,7 +81,7 @@ export const SettingMenu = ({
               type="number"
               id="fiveSearchCycles"
               name="fiveSearchCycles"
-              min={4000}
+              min={1000}
               max={999999}
               value={timeToWaitAfterFiveSearchCycles}
               onChange={(e) => handleInputChange(e, setTimeToWaitAfterFiveSearchCycles)}
@@ -95,7 +95,7 @@ export const SettingMenu = ({
               type="number"
               id="fiveProfileFetches"
               name="fiveProfileFetches"
-              min={4000}
+              min={1000}
               max={999999}
               value={timeToWaitAfterFiveProfileFetches}
               onChange={(e) => handleInputChange(e, setTimeToWaitAfterFiveProfileFetches)}
