@@ -127,6 +127,7 @@ html {
             color: variables.$clr-white;
             @extend .p-clear;
 
+
             &.copy-list {
                 font-weight: 300;
                 color: variables.$clr-white;
@@ -152,6 +153,15 @@ html {
 
             &.run-scan:hover {
                 background-color: variables.$bg-secondary;
+            }
+
+            &.load-save {
+                position: absolute;
+                left: 50%;
+                top: calc(50% + 100px);
+                transform: translateX(-50%);
+                width: 160px;
+                padding: variables.$size-small variables.$size-large;
             }
 
             &.unfollow {

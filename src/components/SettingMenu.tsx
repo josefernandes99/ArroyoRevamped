@@ -15,7 +15,6 @@ export const SettingMenu = ({
   const [timeBetweenSearchCycles, setTimeBetweenSearchCycles] = useState(currentTimings.timeBetweenSearchCycles);
   const [timeToWaitAfterFiveSearchCycles, setTimeToWaitAfterFiveSearchCycles] = useState(currentTimings.timeToWaitAfterFiveSearchCycles);
   const [timeBetweenProfileFetches, setTimeBetweenProfileFetches] = useState(currentTimings.timeBetweenProfileFetches);
-  const [timeToWaitAfterFiveProfileFetches, setTimeToWaitAfterFiveProfileFetches] = useState(currentTimings.timeToWaitAfterFiveProfileFetches);
   const [timeBetweenUnfollows, setTimeBetweenUnfollows] = useState(currentTimings.timeBetweenUnfollows);
   const [timeToWaitAfterFiveUnfollows, setTimeToWaitAfterFiveUnfollows] = useState(currentTimings.timeToWaitAfterFiveUnfollows);
 
@@ -25,7 +24,6 @@ export const SettingMenu = ({
       timeBetweenSearchCycles,
       timeToWaitAfterFiveSearchCycles,
       timeBetweenProfileFetches,
-      timeToWaitAfterFiveProfileFetches,
       timeBetweenUnfollows,
       timeToWaitAfterFiveUnfollows,
     });
@@ -89,19 +87,6 @@ export const SettingMenu = ({
             <label className="margin-between-input-and-label">(ms)</label>
           </div>
 
-          <div className="row">
-            <label className="minimun-width">Default time to wait after five profile fetches</label>
-            <input
-              type="number"
-              id="fiveProfileFetches"
-              name="fiveProfileFetches"
-              min={1000}
-              max={999999}
-              value={timeToWaitAfterFiveProfileFetches}
-              onChange={(e) => handleInputChange(e, setTimeToWaitAfterFiveProfileFetches)}
-            />
-            <label className="margin-between-input-and-label">(ms)</label>
-          </div>
 
           <div className="row">
             <label className="minimun-width">Default time between unfollows</label>

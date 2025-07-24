@@ -4,6 +4,7 @@ import { assertUnreachable } from "../utils/utils";
 import { SettingMenu } from "./SettingMenu";
 import { SettingIcon } from "./icons/SettingIcon";
 import { Timings } from "../model/timings";
+import { SAVED_RESULTS_STORAGE_KEY } from "../constants/constants";
 
 interface ToolBarProps {
   isActiveProcess: boolean;
@@ -65,6 +66,23 @@ export const Toolbar = ({
             }
           }}
         />
+        {state.status === "scanning" && (
+          <button
+            className="toggle-all-button"
+            onClick={() => {
+              if (state.status !== "scanning") return;
+              localStorage.setItem(
+                SAVED_RESULTS_STORAGE_KEY,
+                JSON.stringify({
+                  results: state.results ?? [],
+                  whitelistedResults: state.whitelistedResults ?? [],
+                }),
+              );
+            }}
+          >
+            Save Current State
+          </button>
+        )}
         {state.status === "scanning" && (
           <button
             title="Select all on this page"

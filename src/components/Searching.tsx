@@ -75,17 +75,30 @@ export const Searching = ({
       state.searchTerm,
       state.filter,
     );
-    const keywords = bioSearch
+    const tokens = bioSearch
       .split(',')
       .map(k => asciiNormalize(k).trim().toLowerCase())
       .filter(k => k);
-    if (keywords.length === 0) {
-      return base;
+    const positive: string[] = [];
+    const negative: string[] = [];
+    for (const t of tokens) {
+      if (t.startsWith('-(') && t.endsWith(')')) {
+        const kw = t.slice(2, -1).trim();
+        if (kw) negative.push(kw);
+      } else {
+        positive.push(t);
+      }
     }
     return base.filter(u => {
       if (!u.biography) return false;
       const bio = asciiNormalize(u.biography).toLowerCase();
-      return keywords.some(k => bio.includes(k));
+      if (negative.some(k => bio.includes(k))) {
+        return false;
+      }
+      if (positive.length === 0) {
+        return true;
+      }
+      return positive.some(k => bio.includes(k));
     });
   }, [state, whitelistSet, bioSearch]);
   const selectedIds = state.selectedIds;
@@ -100,9 +113,7 @@ export const Searching = ({
 
   const elapsedMs = scrapeStart ? Date.now() - scrapeStart : 0;
   const remaining = (state.results?.length ?? 0) - scrapedCount;
-  const etaMs =
-    remaining * timings.timeBetweenProfileFetches +
-    Math.floor(remaining / 5) * timings.timeToWaitAfterFiveProfileFetches;
+  const etaMs = remaining * timings.timeBetweenProfileFetches;
   const elapsed = formatDuration(elapsedMs);
   const eta = formatDuration(etaMs);
 

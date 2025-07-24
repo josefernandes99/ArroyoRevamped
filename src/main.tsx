@@ -11,9 +11,9 @@ import { DEFAULT_TIME_BETWEEN_SEARCH_CYCLES,
   DEFAULT_TIME_TO_WAIT_AFTER_FIVE_SEARCH_CYCLES,
   DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS,
   DEFAULT_TIME_BETWEEN_PROFILE_FETCHES,
-  DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES,
   INSTAGRAM_HOSTNAME,
-  WHITELISTED_RESULTS_STORAGE_KEY
+  WHITELISTED_RESULTS_STORAGE_KEY,
+  SAVED_RESULTS_STORAGE_KEY
 } from "./constants/constants";
 import {
   assertUnreachable,
@@ -58,7 +58,6 @@ function App() {
       timeBetweenSearchCycles: DEFAULT_TIME_BETWEEN_SEARCH_CYCLES,
       timeToWaitAfterFiveSearchCycles: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_SEARCH_CYCLES,
       timeBetweenProfileFetches: DEFAULT_TIME_BETWEEN_PROFILE_FETCHES,
-      timeToWaitAfterFiveProfileFetches: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_PROFILE_FETCHES,
       timeBetweenUnfollows: DEFAULT_TIME_BETWEEN_UNFOLLOWS,
       timeToWaitAfterFiveUnfollows: DEFAULT_TIME_TO_WAIT_AFTER_FIVE_UNFOLLOWS,
     }
@@ -147,6 +146,54 @@ function App() {
       currentTab: "non_whitelisted",
       percentage: 0,
       results: [],
+      selectedIds: new Set<string>(),
+      whitelistedResults,
+      filter: {
+        showNonFollowers: true,
+        showFollowers: false,
+        showPublic: true,
+        showPrivate: true,
+      },
+    });
+  };
+
+  const onLoad = () => {
+    if (state.status !== "initial") {
+      return;
+    }
+    const saved = localStorage.getItem(SAVED_RESULTS_STORAGE_KEY);
+    const whitelistedResultsFromStorage = localStorage.getItem(
+      WHITELISTED_RESULTS_STORAGE_KEY,
+    );
+    if (!saved) {
+      alert("No saved state found");
+      return;
+    }
+    let parsed: {
+      results: readonly UserNode[];
+      whitelistedResults?: readonly UserNode[];
+    };
+    try {
+      parsed = JSON.parse(saved);
+    } catch (e) {
+      alert("Failed to load saved data");
+      return;
+    }
+    followerFetchStarted = true;
+    scanningPaused = false;
+    setScrapeStart(null);
+    setScrapedCount(parsed.results.length);
+    const whitelistedResults: readonly UserNode[] = whitelistedResultsFromStorage
+      ? JSON.parse(whitelistedResultsFromStorage)
+      : parsed.whitelistedResults ?? [];
+    setState({
+      status: "scanning",
+      page: 1,
+      searchTerm: "",
+      sortColumns: [],
+      currentTab: "non_whitelisted",
+      percentage: 100,
+      results: parsed.results,
       selectedIds: new Set<string>(),
       whitelistedResults,
       filter: {
@@ -267,7 +314,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const scan = async () => {
-      if (state.status !== "scanning") {
+      if (state.status !== "scanning" || (state.results?.length ?? 0) > 0) {
         return;
       }
       let scrollCycle = 0;
@@ -371,7 +418,6 @@ function App() {
       followerFetchStarted = true;
       setScrapeStart(Date.now());
       setScrapedCount(0);
-      let cycle = 0;
       let idx = 0;
       while (!cancelled) {
         const s = stateRef.current as ScanningState;
@@ -427,18 +473,6 @@ function App() {
                 timingsRef.current.timeBetweenProfileFetches * 0.7),
           ) + timingsRef.current.timeBetweenProfileFetches,
         );
-        cycle++;
-        if (cycle >= 5) {
-          cycle = 0;
-          setToast({
-            show: true,
-            text: `Sleeping ${
-              timingsRef.current.timeToWaitAfterFiveProfileFetches / 1000
-            } seconds to prevent getting temp blocked`,
-          });
-          await sleep(timingsRef.current.timeToWaitAfterFiveProfileFetches);
-          setToast({ show: false });
-        }
         idx++;
       }
       if (!cancelled) {
@@ -446,13 +480,13 @@ function App() {
       }
     };
 
-    if (!followerFetchStarted && state.status === "scanning" && (state.results?.length ?? 0) > 0) {
+    if (!followerFetchStarted && state.status === "scanning") {
       fetchProfiles();
     }
     return () => {
       cancelled = true;
     };
-  }, [state, timings]);
+  }, [state.status, timings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -540,7 +574,7 @@ function App() {
   let markup: React.JSX.Element;
   switch (state.status) {
     case "initial":
-      markup = <NotSearching onScan={onScan}></NotSearching>;
+      markup = <NotSearching onScan={onScan} onLoad={onLoad}></NotSearching>;
       break;
 
     case "scanning": {
