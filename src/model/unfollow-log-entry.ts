@@ -1,6 +1,5 @@
-import { UserNode } from "./user";
-
 export interface UnfollowLogEntry {
-  readonly user: UserNode;
+  readonly id: string;
+  readonly username: string;
   readonly unfollowedSuccessfully: boolean;
 }

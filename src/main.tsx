@@ -28,6 +28,7 @@ import {
 import { scrapeFollowerCounts } from "./utils/instagram";
 import { NotSearching } from "./components/NotSearching";
 import { State, ScanningState } from "./model/state";
+import { UnfollowLogEntry } from "./model/unfollow-log-entry";
 import { Searching } from "./components/Searching";
 import { Toolbar } from "./components/Toolbar";
 import { Unfollowing } from "./components/Unfollowing";
@@ -68,6 +69,7 @@ function App() {
 
   const stateRef = useRef<State>(state);
   const timingsRef = useRef<Timings>(timings);
+  const userMapRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -79,7 +81,7 @@ function App() {
     if (state.status !== "scanning") {
       return new Set<string>();
     }
-    return new Set(state.whitelistedResults.map(user => user.id));
+    return new Set((state.whitelistedResults ?? []).map(user => user.id));
   }, [state]);
 
   const usersForDisplay = useMemo(() => {
@@ -87,7 +89,7 @@ function App() {
       return [] as readonly UserNode[];
     }
     return getUsersForDisplay(
-      state.results,
+      state.results ?? [],
       whitelistSet,
       state.currentTab,
       state.searchTerm,
@@ -97,7 +99,7 @@ function App() {
 
   const selectedIds = useMemo(() => {
     if (state.status !== "scanning") return new Set<string>();
-    return new Set(state.selectedResults.map(u => u.id));
+    return state.selectedIds;
   }, [state]);
   const sortedUsersForDisplay = useMemo(() => {
     if (state.status !== "scanning") {
@@ -145,7 +147,7 @@ function App() {
       currentTab: "non_whitelisted",
       percentage: 0,
       results: [],
-      selectedResults: [],
+      selectedIds: new Set<string>(),
       whitelistedResults,
       filter: {
         showNonFollowers: true,
@@ -160,7 +162,7 @@ function App() {
     if (state.status !== "scanning") {
       return;
     }
-    if (state.selectedResults.length > 0) {
+    if (state.selectedIds.size > 0) {
       if (!confirm("Changing filter options will clear selected users")) {
         // Force re-render. Bit of a hack but had an issue where the checkbox state was still
         // changing in the UI even even when not confirming. So updating the state fixes this
@@ -174,7 +176,7 @@ function App() {
     const newFilter = { ...state.filter, [name]: checked } as typeof state.filter;
     setState({
       ...state,
-      selectedResults: [],
+      selectedIds: new Set<string>(),
       filter: newFilter,
     });
   };
@@ -199,12 +201,16 @@ function App() {
     if (newStatus) {
       setState({
         ...state,
-        selectedResults: [...state.selectedResults, user],
+        selectedIds: new Set(state.selectedIds).add(user.id),
       });
     } else {
       setState({
         ...state,
-        selectedResults: state.selectedResults.filter(result => result.id !== user.id),
+        selectedIds: (() => {
+          const set = new Set(state.selectedIds);
+          set.delete(user.id);
+          return set;
+        })(),
       });
     }
   };
@@ -213,10 +219,10 @@ function App() {
     if (state.status !== "scanning") {
       return;
     }
-    const allSelected = state.selectedResults.length === usersForDisplay.length;
+    const allSelected = state.selectedIds.size === usersForDisplay.length;
     setState({
       ...state,
-      selectedResults: allSelected ? [] : usersForDisplay,
+      selectedIds: allSelected ? new Set<string>() : new Set(usersForDisplay.map(u => u.id)),
     });
   };
 
@@ -225,12 +231,10 @@ function App() {
     if (state.status !== "scanning") {
       return;
     }
-    const allSelected = currentPageUsers.every(u =>
-      state.selectedResults.includes(u),
-    );
+    const allSelected = currentPageUsers.every(u => selectedIds.has(u.id));
     setState({
       ...state,
-      selectedResults: allSelected ? [] : currentPageUsers,
+      selectedIds: allSelected ? new Set<string>() : new Set(currentPageUsers.map(u => u.id)),
     });
   };
 
@@ -261,6 +265,7 @@ function App() {
   }, [isActiveProcess, state]);
 
   useEffect(() => {
+    let cancelled = false;
     const scan = async () => {
       if (state.status !== "scanning") {
         return;
@@ -271,7 +276,7 @@ function App() {
       let currentFollowedUsersCount = 0;
       let totalFollowedUsersCount = -1;
 
-      while (hasNext) {
+      while (hasNext && !cancelled) {
         let receivedData: User;
         try {
           receivedData = (await fetch(url).then(res => res.json())).data.user.edge_follow;
@@ -294,7 +299,7 @@ function App() {
           }
 
           const newResults = [
-            ...prevState.results,
+            ...(prevState.results ?? []),
             ...receivedData.edges.map(edge => {
               const n = edge.node;
               return {
@@ -344,14 +349,20 @@ function App() {
         }
         setToast({ show: false });
       }
-      setToast({ show: true, text: "Scanning completed!" });
+      if (!cancelled) {
+        setToast({ show: true, text: "Scanning completed!" });
+      }
     };
     scan();
     // Dependency array not entirely legit, but works this way. TODO: Find a way to fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
   }, [state.status]);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchProfiles = async () => {
       if (state.status !== "scanning") {
         return;
@@ -362,14 +373,14 @@ function App() {
       setScrapedCount(0);
       let cycle = 0;
       let idx = 0;
-      while (true) {
+      while (!cancelled) {
         const s = stateRef.current as ScanningState;
-        if (idx >= s.results.length) {
+        if (idx >= (s.results?.length ?? 0)) {
           if (s.percentage === 100) break;
           await sleep(500);
           continue;
         }
-        const u = s.results[idx];
+        const u = s.results![idx];
         try {
           const scraped = await scrapeFollowerCounts(u.username);
           if (!scraped) {
@@ -394,9 +405,8 @@ function App() {
             if (prev.status !== "scanning") return prev;
             return {
               ...prev,
-              results: update(prev.results),
-              whitelistedResults: update(prev.whitelistedResults),
-              selectedResults: update(prev.selectedResults),
+              results: prev.results ? update(prev.results) : null,
+              whitelistedResults: prev.whitelistedResults ? update(prev.whitelistedResults) : null,
             };
           });
           setScrapedCount(idx + 1);
@@ -431,15 +441,21 @@ function App() {
         }
         idx++;
       }
-      setToast({ show: true, text: "Profile fetching completed!" });
+      if (!cancelled) {
+        setToast({ show: true, text: "Profile fetching completed!" });
+      }
     };
 
-    if (!followerFetchStarted && state.status === "scanning" && state.results.length > 0) {
+    if (!followerFetchStarted && state.status === "scanning" && (state.results?.length ?? 0) > 0) {
       fetchProfiles();
     }
+    return () => {
+      cancelled = true;
+    };
   }, [state, timings]);
 
   useEffect(() => {
+    let cancelled = false;
     const unfollow = async () => {
       if (state.status !== "unfollowing") {
         return;
@@ -450,13 +466,15 @@ function App() {
         throw new Error("csrftoken cookie is null");
       }
 
-      const total = state.selectedResults.length;
+      const total = state.selectedIds.size;
       let counter = 0;
-      for (const user of state.selectedResults) {
+      let logBuffer: UnfollowLogEntry[] = [];
+      for (const id of state.selectedIds) {
+        const username = userMapRef.current.get(id) || "";
         counter += 1;
         const percentage = Math.floor((counter / total) * 100);
         try {
-          await fetch(unfollowUserUrlGenerator(user.id), {
+          await fetch(unfollowUserUrlGenerator(id), {
             headers: {
               "content-type": "application/x-www-form-urlencoded",
               "x-csrftoken": csrftoken,
@@ -465,40 +483,25 @@ function App() {
             mode: "cors",
             credentials: "include",
           });
-          setState(prevState => {
-            if (prevState.status !== "unfollowing") {
-              return prevState;
-            }
-            return {
-              ...prevState,
-              percentage,
-              selectedResults: prevState.selectedResults.filter(u => u.id !== user.id),
-              unfollowLog: [
-                ...prevState.unfollowLog,
-                {
-                  user,
-                  unfollowedSuccessfully: true,
-                },
-              ],
-            };
-          });
+          logBuffer.push({ id, username, unfollowedSuccessfully: true });
         } catch (e) {
           console.error(e);
+          logBuffer.push({ id, username, unfollowedSuccessfully: false });
+        }
+        if (logBuffer.length >= 10 || counter === total || cancelled) {
+          const bufferCopy = logBuffer;
+          logBuffer = [];
           setState(prevState => {
             if (prevState.status !== "unfollowing") {
               return prevState;
             }
+            const selectedIds = new Set(prevState.selectedIds);
+            for (const entry of bufferCopy) selectedIds.delete(entry.id);
             return {
               ...prevState,
               percentage,
-              selectedResults: prevState.selectedResults.filter(u => u.id !== user.id),
-              unfollowLog: [
-                ...prevState.unfollowLog,
-                {
-                  user,
-                  unfollowedSuccessfully: false,
-                },
-              ],
+              selectedIds,
+              unfollowLog: [...prevState.unfollowLog, ...bufferCopy],
             };
           });
         }
@@ -529,6 +532,9 @@ function App() {
     unfollow();
     // Dependency array not entirely legit, but works this way. TODO: Find a way to fix.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
   }, [state.status]);
 
   let markup: React.JSX.Element;
@@ -542,6 +548,7 @@ function App() {
         state={state}
         handleScanFilter={handleScanFilter}
         toggleUser={toggleUser}
+        userMapRef={userMapRef}
         pauseScan={pauseScan}
         setState={setState}
         scanningPaused={scanningPaused}

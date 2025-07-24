@@ -86,7 +86,7 @@ export function getUnfollowLogForDisplay(log: readonly UnfollowLogEntry[], searc
     if (!filter.showFailed && !entry.unfollowedSuccessfully) {
       continue;
     }
-    const userMatchesSearchTerm = entry.user.username.toLowerCase().includes(searchTerm.toLowerCase());
+    const userMatchesSearchTerm = entry.username.toLowerCase().includes(searchTerm.toLowerCase());
     if (searchTerm !== "" && !userMatchesSearchTerm) {
       continue;
     }
@@ -197,9 +197,23 @@ export function assertUnreachable(_value: never): never {
   throw new Error('Statement should be unreachable');
 }
 
-export function sleep(ms: number): Promise<any> {
+function maybeGC(): void {
+  const g = (globalThis as any).gc;
+  if (typeof g === 'function') {
+    try {
+      g();
+    } catch {
+      // ignore errors calling gc
+    }
+  }
+}
+
+export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => {
-    setTimeout(resolve, ms);
+    setTimeout(() => {
+      maybeGC();
+      resolve();
+    }, ms);
   });
 }
 

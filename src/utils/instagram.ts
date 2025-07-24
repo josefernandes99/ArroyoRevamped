@@ -15,6 +15,9 @@ export function parseInstagramNumber(str: string): number {
 export async function scrapeFollowerCounts(
   username: string,
 ): Promise<{ followers: number; following: number; biography: string | null } | null> {
+  let html: string | null = null;
+  let descDoc: Document | null = null;
+  let temp: HTMLDivElement | null = null;
   try {
     let biography: string | null = null;
 
@@ -22,10 +25,14 @@ export async function scrapeFollowerCounts(
     if (!res.ok) {
       throw new Error(`http ${res.status}`);
     }
-    const html = await res.text();
+    html = await res.text();
+
+    html = html
+      .replace(/<img[^>]*>/gi, '')
+      .replace(/<video[^>]*>[\s\S]*?<\/video>/gi, '');
 
     // fallback to meta description parsing (may vary by locale)
-    const descDoc = new DOMParser().parseFromString(html, 'text/html');
+    descDoc = new DOMParser().parseFromString(html, 'text/html');
     const desc =
       descDoc.querySelector('meta[name="description"]')?.getAttribute('content') ||
       descDoc
@@ -51,6 +58,10 @@ export async function scrapeFollowerCounts(
             biography = bioMatch[1];
           }
         }
+        html = null as any;
+        descDoc = null as any;
+        temp = null;
+        (globalThis as any).gc?.();
         return { followers, following, biography };
       }
     }
@@ -77,7 +88,7 @@ export async function scrapeFollowerCounts(
       console.error('scrapeFollowerCounts: description regex mismatch', desc);
     }
 
-    const temp = document.createElement('div');
+    temp = document.createElement('div');
     temp.innerHTML = html;
     const pageText = temp.innerText;
     
@@ -101,12 +112,22 @@ export async function scrapeFollowerCounts(
           }
         }
       }
+      html = null as any;
+      descDoc = null as any;
+      if (temp) temp.innerHTML = '';
+      temp = null;
+      (globalThis as any).gc?.();
       return { followers, following, biography };
     }
 
     throw new Error('unable to extract follower counts');
   } catch (err) {
     console.error(`scrapeFollowerCounts: error for ${username}`, err);
+    html = null as any;
+    descDoc = null as any;
+    if (temp) temp.innerHTML = '';
+    temp = null;
+    (globalThis as any).gc?.();
     return null;
   }
 }

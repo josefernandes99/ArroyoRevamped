@@ -44,7 +44,7 @@ export const Unfollowing = (
         </menu>
       </aside>
       <article className="unfollow-log-container">
-        {state.unfollowLog.length === state.selectedResults.length && (
+        {state.unfollowLog.length === state.selectedIds.size && (
           <>
             <hr />
             <div className="fs-large p-medium clr-green">All DONE!</div>
@@ -54,24 +54,24 @@ export const Unfollowing = (
         {getUnfollowLogForDisplay(state.unfollowLog, state.searchTerm, state.filter).map(
           (entry, index) =>
             entry.unfollowedSuccessfully ? (
-              <div className="p-medium" key={entry.user.id}>
+              <div className="p-medium" key={entry.id}>
                 Unfollowed
                 <a
                   className="clr-inherit"
                   target="_blank"
-                  href={`../${entry.user.username}`}
+                  href={`../${entry.username}`}
                   rel="noreferrer"
                 >
-                  &nbsp;{entry.user.username}
+                  &nbsp;{entry.username}
                 </a>
                 <span className="clr-cyan">
-                  &nbsp; [{index + 1}/{state.selectedResults.length}]
+                  &nbsp; [{index + 1}/{state.selectedIds.size}]
                 </span>
               </div>
             ) : (
-              <div className="p-medium clr-red" key={entry.user.id}>
-                Failed to unfollow {entry.user.username} [{index + 1}/
-                {state.selectedResults.length}]
+              <div className="p-medium clr-red" key={entry.id}>
+                Failed to unfollow {entry.username} [{index + 1}/
+                {state.selectedIds.size}]
               </div>
             ),
         )}

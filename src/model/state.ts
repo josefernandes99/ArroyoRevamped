@@ -25,9 +25,9 @@ export type ScanningState = {
   readonly currentTab: ScanningTab;
   readonly searchTerm: string;
   readonly percentage: number;
-  readonly results: readonly UserNode[];
-  readonly whitelistedResults: readonly UserNode[];
-  readonly selectedResults: readonly UserNode[];
+  readonly results: readonly UserNode[] | null;
+  readonly whitelistedResults: readonly UserNode[] | null;
+  readonly selectedIds: ReadonlySet<string>;
   readonly filter: ScanningFilter;
   readonly sortColumns: readonly SortColumn[];
 };
@@ -36,7 +36,7 @@ export type UnfollowingState = {
   readonly status: 'unfollowing';
   readonly searchTerm: string;
   readonly percentage: number;
-  readonly selectedResults: readonly UserNode[];
+  readonly selectedIds: ReadonlySet<string>;
   readonly unfollowLog: readonly UnfollowLogEntry[];
   readonly filter: UnfollowFilter;
 };

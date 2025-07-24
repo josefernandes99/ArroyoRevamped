@@ -35,6 +35,7 @@ export interface SearchingProps {
   pauseScan: () => void;
   handleScanFilter: (e: React.ChangeEvent<HTMLInputElement>) => void;
   toggleUser: (checked: boolean, user: UserNode) => void;
+  userMapRef: React.MutableRefObject<Map<string, string>>;
   UserCheckIcon: React.FC;
   UserUncheckIcon: React.FC;
   scrapedCount: number;
@@ -49,6 +50,7 @@ export const Searching = ({
   pauseScan,
   handleScanFilter,
   toggleUser,
+  userMapRef,
   UserCheckIcon,
   UserUncheckIcon,
   scrapedCount,
@@ -62,12 +64,12 @@ export const Searching = ({
   const [bioSearch, setBioSearch] = useState("");
 
   const whitelistSet = useMemo(() => {
-    return new Set(state.whitelistedResults.map(user => user.id));
+    return new Set((state.whitelistedResults ?? []).map(user => user.id));
   }, [state]);
 
   const usersForDisplay = useMemo(() => {
     const base = getUsersForDisplay(
-      state.results,
+      state.results ?? [],
       whitelistSet,
       state.currentTab,
       state.searchTerm,
@@ -86,7 +88,7 @@ export const Searching = ({
       return keywords.some(k => bio.includes(k));
     });
   }, [state, whitelistSet, bioSearch]);
-  const selectedIds = useMemo(() => new Set(state.selectedResults.map(u => u.id)), [state.selectedResults]);
+  const selectedIds = state.selectedIds;
   const sortedUsersForDisplay = useMemo(
     () => sortUsers(usersForDisplay, state.sortColumns, selectedIds),
     [usersForDisplay, state.sortColumns, selectedIds],
@@ -97,7 +99,7 @@ export const Searching = ({
   );
 
   const elapsedMs = scrapeStart ? Date.now() - scrapeStart : 0;
-  const remaining = state.results.length - scrapedCount;
+  const remaining = (state.results?.length ?? 0) - scrapedCount;
   const etaMs =
     remaining * timings.timeBetweenProfileFetches +
     Math.floor(remaining / 5) * timings.timeToWaitAfterFiveProfileFetches;
@@ -186,7 +188,7 @@ export const Searching = ({
           {scrapeStart !== null && (
             <p>Scraped: {scrapedCount}</p>
           )}
-          <p>Total: {state.results.length}</p>
+          <p>Total: {state.results?.length ?? 0}</p>
           {scrapeStart !== null && (
             <p>
               Scraping: {elapsed} / {eta}
@@ -247,30 +249,36 @@ export const Searching = ({
             }
             //TODO TEMP until types are properly fixed
             // @ts-ignore
-            setState(prevState => {
-              if (prevState.status !== "scanning") {
-                return prevState;
+            if (state.selectedIds.size === 0) {
+              alert("Must select at least a single user to unfollow");
+              return;
+            }
+            const ids = state.selectedIds;
+            const map = new Map<string, string>();
+            for (const u of state.results ?? []) {
+              if (ids.has(u.id)) {
+                map.set(u.id, u.username);
               }
-              if (prevState.selectedResults.length === 0) {
-                alert("Must select at least a single user to unfollow");
-                return prevState;
-              }
-              const newState: State = {
-                status: "unfollowing",
-                searchTerm: prevState.searchTerm,
-                percentage: 0,
-                selectedResults: prevState.selectedResults,
-                unfollowLog: [],
-                filter: {
-                  showSucceeded: true,
-                  showFailed: true,
-                },
-              };
-              return newState;
+            }
+            userMapRef.current = map;
+            if (state.status === "scanning") {
+              setState({
+                ...state,
+                results: null,
+                whitelistedResults: null,
+              });
+            }
+            setState({
+              status: "unfollowing",
+              searchTerm: state.searchTerm,
+              percentage: 0,
+              selectedIds: ids,
+              unfollowLog: [],
+              filter: { showSucceeded: true, showFailed: true },
             });
           }}
         >
-          Unfollow ({state.selectedResults.length})
+          Unfollow ({state.selectedIds.size})
         </button>
       </aside>
       <article className="results-container">
@@ -284,7 +292,7 @@ export const Searching = ({
               setState({
                 ...state,
                 currentTab: "non_whitelisted",
-                selectedResults: [],
+                selectedIds: new Set<string>(),
               });
             }}
           >
@@ -299,7 +307,7 @@ export const Searching = ({
               setState({
                 ...state,
                 currentTab: "whitelisted",
-                selectedResults: [],
+                selectedIds: new Set<string>(),
               });
             }}
           >
@@ -346,11 +354,14 @@ export const Searching = ({
                         let whitelistedResults: readonly UserNode[] = [];
                         switch (state.currentTab) {
                           case "non_whitelisted":
-                            whitelistedResults = [...state.whitelistedResults, user];
+                            whitelistedResults = [
+                              ...(state.whitelistedResults ?? []),
+                              user,
+                            ];
                             break;
 
                           case "whitelisted":
-                            whitelistedResults = state.whitelistedResults.filter(
+                            whitelistedResults = (state.whitelistedResults ?? []).filter(
                               result => result.id !== user.id,
                             );
                             break;
@@ -406,7 +417,7 @@ export const Searching = ({
                     <input
                       className="account-checkbox"
                       type="checkbox"
-                      checked={state.selectedResults.indexOf(user) !== -1}
+                      checked={selectedIds.has(user.id)}
                       onChange={e => toggleUser(e.currentTarget.checked, user)}
                     />
                   </td>
