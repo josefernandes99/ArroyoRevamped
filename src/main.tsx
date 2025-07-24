@@ -37,6 +37,7 @@ import { Timings } from "./model/timings";
 // pause
 let scanningPaused = false;
 let followerFetchStarted = false;
+let loadedFromSave = false;
 
 function pauseScan() {
   scanningPaused = !scanningPaused;
@@ -137,6 +138,7 @@ function App() {
     const whitelistedResults: readonly UserNode[] =
       whitelistedResultsFromStorage === null ? [] : JSON.parse(whitelistedResultsFromStorage);
     followerFetchStarted = false;
+    loadedFromSave = false;
     scanningPaused = false;
     setState({
       status: "scanning",
@@ -180,6 +182,7 @@ function App() {
       return;
     }
     followerFetchStarted = true;
+    loadedFromSave = true;
     scanningPaused = false;
     setScrapeStart(null);
     setScrapedCount(parsed.results.length);
@@ -314,7 +317,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const scan = async () => {
-      if (state.status !== "scanning" || (state.results?.length ?? 0) > 0) {
+      if (state.status !== "scanning" || loadedFromSave || (state.results?.length ?? 0) > 0) {
         return;
       }
       let scrollCycle = 0;
@@ -480,7 +483,7 @@ function App() {
       }
     };
 
-    if (!followerFetchStarted && state.status === "scanning") {
+    if (!loadedFromSave && !followerFetchStarted && state.status === "scanning") {
       fetchProfiles();
     }
     return () => {
