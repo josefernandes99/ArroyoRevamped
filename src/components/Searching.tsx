@@ -79,6 +79,13 @@ export const Searching = ({
       .split(',')
       .map(k => asciiNormalize(k).trim().toLowerCase())
       .filter(k => k);
+
+    if (tokens.length === 0) {
+      // No biography keywords entered. Show all users, including those with
+      // empty biographies.
+      return base;
+    }
+
     const positive: string[] = [];
     const negative: string[] = [];
     for (const t of tokens) {
